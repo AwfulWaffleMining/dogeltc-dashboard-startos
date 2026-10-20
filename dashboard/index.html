@@ -641,7 +641,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     if (blind) {
       $('syncBanner').querySelector('.t').textContent = 'Node unreachable';
       $('syncText').textContent =
-        "The Quai Network service is running but its mining stats API is not answering, so this page has nothing to show. It usually means the node is still starting up, or the two packages are on versions that disagree about the API port.";
+        "The stratum is running but its stats API is not answering, so this page has nothing to show. That usually means it is still starting up \u2014 give it a minute. If it persists, check that both the Litecoin and Dogecoin nodes are synced: the stratum will not serve work until they are.";
       $('syncFill').style.width = '0%';
     } else {
       $('syncBanner').querySelector('.t').textContent = 'Node syncing';
