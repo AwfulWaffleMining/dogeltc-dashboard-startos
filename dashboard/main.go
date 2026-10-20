@@ -840,7 +840,47 @@ func (c *collector) handleCSV(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+const version = "dogeltc-dashboard"
+
+const usage = `dogeltc-dashboard — collector and JSON API for the Dogecoin + Litecoin merge-mining dashboard.
+
+Configured entirely by environment, because that is how StartOS starts it:
+
+  DASH_ADDR           listen address            (default :8080)
+  DASH_ASSETS         directory holding index.html and fonts
+  DASH_DATA           directory for stats.json
+  DASH_STRATUM        stratum stats API base url
+  DASH_STRATUM_PORT   stratum port to report to miners
+  DASH_LTC_RPC        Litecoin RPC url      DASH_LTC_COOKIE   path to its .cookie
+  DASH_DOGE_RPC       Dogecoin RPC url      DASH_DOGE_COOKIE  path to its .cookie
+
+Takes no flags other than --help and --version.
+`
+
 func main() {
+	/* Answer --help and --version and EXIT.
+	 *
+	 * Without this the binary ignores its arguments entirely and falls
+	 * through to ListenAndServe, so `scrypt-dashboard --help` starts a
+	 * server and blocks forever. The Dockerfile ran exactly that as a smoke
+	 * test and hung the image build until CI gave up -- a `;` ignores a bad
+	 * exit status, but nothing saves you from a process that never exits.
+	 * A binary that silently swallows a flag it does not understand is
+	 * unfriendly anyway; it should say what it takes. */
+	for _, a := range os.Args[1:] {
+		switch a {
+		case "-h", "--help", "help":
+			fmt.Print(usage)
+			return
+		case "-v", "--version", "version":
+			fmt.Println(version)
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "unknown argument %q\n\n%s", a, usage)
+			os.Exit(2)
+		}
+	}
+
 	addr := env("DASH_ADDR", ":8080")
 	assets := env("DASH_ASSETS", "/opt/dashboard")
 	data := env("DASH_DATA", "/data/dashboard")

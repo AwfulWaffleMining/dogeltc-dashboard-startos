@@ -25,8 +25,14 @@ FROM alpine:3.22
 # runtime dependencies by design -- it uses node:net, node:http, node:crypto
 # and node:fs and nothing else -- so there is nothing to install and npm would
 # only be attack surface.
+# `timeout` is checked here, not assumed. It is a busybox applet rather than a
+# package, so if a future base image ships a trimmed busybox the smoke test
+# below would fail with "timeout: not found" and report it as the dashboard
+# refusing to answer --help. Failing here instead names the real cause.
 RUN apk add --no-cache ca-certificates nodejs \
- && node --version
+ && node --version \
+ && command -v timeout > /dev/null \
+      || { echo "busybox in this base image has no 'timeout' applet" >&2; exit 1; }
 
 COPY --from=builder /src/scrypt-dashboard /usr/local/bin/scrypt-dashboard
 COPY dashboard/index.html /opt/dashboard/index.html
@@ -38,6 +44,15 @@ RUN chmod +x /usr/local/bin/scrypt-dashboard
 # stratum's --meter mode is pure logic with no daemon, network or wallet, so
 # it is a genuine smoke test of the thing that handles money: 52 checks
 # covering share crediting, vardiff and the rolling windows.
-RUN scrypt-dashboard --help 2>/dev/null; \
-    node /opt/stratum/scrypt-solo.mjs --meter > /dev/null \
+# Both are wrapped in `timeout` and joined with `&&`, deliberately.
+#
+# An earlier revision ran `scrypt-dashboard --help 2>/dev/null;` -- and the
+# binary had no argument handling at all, so it fell through to
+# ListenAndServe and blocked forever. The `;` was there to ignore a bad exit
+# status, which is useless against a process that never exits: the image
+# build simply hung until CI gave up. A build step that can hang is worse
+# than one that can fail, because nothing reports it.
+RUN timeout 30 scrypt-dashboard --help > /dev/null \
+      || { echo "scrypt-dashboard did not answer --help and exit; refusing to build image" >&2; exit 1; } \
+ && timeout 300 node /opt/stratum/scrypt-solo.mjs --meter > /dev/null \
       || { echo "stratum self-checks failed; refusing to build image" >&2; exit 1; }
