@@ -220,7 +220,8 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       <div class="card">
         <div class="label">Next block (estimate)</div>
         <div class="big" id="kEta">–</div>
-        <div class="kv"><span>best share <b id="kBest">–</b></span><span>reward <b id="kReward">–</b></span></div>
+        <div class="kv" id="kEtaAlt"><span>&nbsp;</span></div>
+        <div class="kv" id="kReward"><span>–</span></div>
       </div>
     </div>
 
@@ -664,15 +665,38 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     /* Expected time to a block, computed server-side from this hashrate
        against the live network figure. Zero means no rate yet, which prints
        as a dash rather than an invented number. */
-    $('kEta').textContent = a.expectedDays > 0 ? '~' + dur(a.expectedDays * 86400) : '–';
-    $('kBest').textContent = luckStr((a.best || {}).luckPct);
+    const etas = CHAINS
+      .map((c) => ({ c, days: (d.summary.chains[c] || {}).expectedDays || 0,
+                     reward: (d.summary.chains[c] || {}).blockReward || 0 }))
+      .filter((e) => e.days > 0)
+      .sort((x, y) => x.days - y.days);
+    if (etas.length) {
+      const lead = etas[0];
+      $('kEta').innerHTML = '<span style="color:var(' + CHAIN_VAR[lead.c] + ')">~'
+        + dur(lead.days * 86400) + '</span><small>' + esc(CHAIN_TICKER[lead.c] || '') + '</small>';
+      $('kEtaAlt').innerHTML = etas.slice(1).map((e) =>
+        '<span><span class="algo-dot" style="background:var(' + CHAIN_VAR[e.c] + ')"></span> '
+        + esc(CHAIN_NAME[e.c]) + ' ~' + dur(e.days * 86400) + '</span>').join('')
+        || '<span>&nbsp;</span>';
+    } else {
+      $('kEta').textContent = '–';
+      $('kEtaAlt').innerHTML = '<span>connect a miner to see the odds</span>';
+    }
     /* Decimals matter here: Litecoin's subsidy is 6.25, and rounding it to
        6 understates every block by 4%. Dogecoin's 10,000 wants separators
        and no decimals, so format by magnitude rather than with one rule. */
-    $('kReward').textContent = a.blockReward
-      ? (a.blockReward >= 1000 ? fmtNum(a.blockReward) : String(a.blockReward))
-        + ' ' + (CHAIN_TICKER[k] || '')
-      : '–';
+    /* Same order as the estimate above it, so the card reads as one thought:
+       the chain you will most likely win on, and what it pays. */
+    const rewardOrder = etas.length ? etas.map((e) => e.c) : CHAINS;
+    $('kReward').innerHTML = rewardOrder
+      .map((c) => (d.summary.chains[c] || {}).blockReward)
+      .every((r) => !r)
+      ? '<span>–</span>'
+      : rewardOrder.map((c) => {
+          const r = (d.summary.chains[c] || {}).blockReward || 0;
+          return '<span>wins <b>' + (r >= 1000 ? fmtNum(r) : String(r)) + '</b> '
+            + esc(CHAIN_TICKER[c] || '') + '</span>';
+        }).join('');
 
     drawPerf();
 

@@ -51,7 +51,7 @@ Blocks are occasionally **orphaned** — two miners find one at nearly the same 
 
 **Hashrate** — what the server measures from your shares, not what your miner claims. They should agree closely. A number appears only once there are enough shares to support one; "warming up" means exactly that.
 
-**Next block (estimate)** — your share of that chain's network, turned into a time. It is an average, not a countdown. A long gap does not make the next one likelier.
+**Next block (estimate)** — both chains, with the sooner one leading, and what each pays. One hash buys both tickets, so these are not alternatives: Dogecoin's shorter estimate is simply where a first win most likely lands. It is an average, not a countdown — a long gap does not make the next one likelier.
 
 **Closest you have come** — your luckiest share so far, shown against each chain side by side. It is **one** share: what changes between the two panels is the target it is measured against. Dogecoin's is the easier of the two, so the same work always gets further there, and the bars show that gap at a glance.
 
