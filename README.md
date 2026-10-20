@@ -72,6 +72,10 @@ Shares are reported per chain anyway, because the same share is tested against t
 
 What replaces payout reconciliation is **maturity**: a coinbase is unspendable for 100 confirmations, so "found" and "spendable" are different states. Orphans are counted, not hidden.
 
+The luckiest share ever seen is kept per chain, in the collector's own store rather than the stratum's bounded buffer, and compared on **luck** rather than raw difficulty. The same share is a different fraction of each target, and the two records can be different shares: each is kept against the network difficulty of its own moment.
+
+That figure carries the dashboard. At solo odds `blocksFound` is zero for months, and a page of zeroes says nothing about whether the hardware is working; how close you have come is always a real number and only ever improves.
+
 ## Building and testing
 
 ```bash

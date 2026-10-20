@@ -118,11 +118,11 @@ type ChainSummary struct {
 	// Expected days to a block at the current hashrate, and the odds over a
 	// year. Honest arithmetic, not a guess: share of network times blocks per
 	// day. Zero when there is no rate yet rather than a fabricated number.
-	ExpectedDays float64 `json:"expectedDays"`
-	OddsPerYear  float64 `json:"oddsPerYear"`
-	SharesValid  uint64  `json:"sharesValid"`
-	SharesStale  uint64  `json:"sharesStale"`
-	BestLuck     float64 `json:"bestLuck"`
+	ExpectedDays float64   `json:"expectedDays"`
+	OddsPerYear  float64   `json:"oddsPerYear"`
+	SharesValid  uint64    `json:"sharesValid"`
+	SharesStale  uint64    `json:"sharesStale"`
+	Best         BestShare `json:"best"`
 }
 
 type Summary struct {
@@ -141,10 +141,28 @@ type Summary struct {
 	Uptime      int64       `json:"uptimeSeconds"`
 }
 
+// Best is the luckiest share ever submitted, per chain, kept permanently.
+//
+// This matters more here than a block count. A solo rig at these odds may
+// never find a block, so a page built around blocks found is a page of
+// zeroes. The closest you have ever come is always a real number, it only
+// ever improves, and it is the honest measure of what the hardware is doing.
+type BestShare struct {
+	// Difficulty the share actually achieved. One figure: the same share is
+	// tested against both chains.
+	Difficulty float64 `json:"difficulty"`
+	// How close that came as a fraction of THIS chain's target, in percent.
+	// The same share is a different fraction of each, which is the whole
+	// story of why one chain pays out sooner than the other.
+	LuckPct float64   `json:"luckPct"`
+	Worker  string    `json:"worker"`
+	At      time.Time `json:"at"`
+}
+
 type store struct {
-	History map[string][]Sample `json:"history"`
-	Blocks  []Block             `json:"blocks"`
-	Best    map[string]float64  `json:"bestLuck"`
+	History map[string][]Sample  `json:"history"`
+	Blocks  []Block              `json:"blocks"`
+	Best    map[string]BestShare `json:"best"`
 }
 
 // ── stratum stats, as the stratum serves them ──────────────────────────────
@@ -237,7 +255,7 @@ func newCollector(dataDir, stratum string, rpcs []chainRPC, port int) *collector
 		chains: map[string]ChainSummary{},
 	}
 	c.st.History = map[string][]Sample{}
-	c.st.Best = map[string]float64{}
+	c.st.Best = map[string]BestShare{}
 	c.load()
 	return c
 }
@@ -258,7 +276,7 @@ func (c *collector) load() {
 		s.History = map[string][]Sample{}
 	}
 	if s.Best == nil {
-		s.Best = map[string]float64{}
+		s.Best = map[string]BestShare{}
 	}
 	c.st = s
 	log.Printf("loaded %d blocks, %d history series", len(s.Blocks), len(s.History))
@@ -459,7 +477,7 @@ func (c *collector) poll() {
 				cs.BlocksFound++
 			}
 		}
-		cs.BestLuck = c.st.Best[ch.name]
+		cs.Best = c.st.Best[ch.name]
 		c.mu.RUnlock()
 
 		chains[ch.name] = cs
@@ -493,6 +511,7 @@ func (c *collector) poll() {
 
 	if err == nil {
 		c.mergeBlocks(s.Blocks)
+		c.recordBest(&s, chains)
 	}
 	c.refreshConfirmations()
 }
@@ -522,6 +541,41 @@ func (c *collector) mergeBlocks(found []statsBlock) {
 	sort.Slice(c.st.Blocks, func(i, j int) bool {
 		return c.st.Blocks[i].FoundAt.After(c.st.Blocks[j].FoundAt)
 	})
+}
+
+// recordBest keeps the luckiest share ever seen, per chain.
+//
+// The stratum's buffer is bounded and resets on restart, so this is where
+// "ever" actually lives. Compared on LUCK rather than raw difficulty,
+// because difficulty is shared while the targets are not: the same share can
+// be a personal best against Dogecoin and unremarkable against Litecoin.
+func (c *collector) recordBest(s *stratumStats, chains map[string]ChainSummary) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, name := range chainOrder {
+		var netDiff float64
+		if d, ok := s.NetDiff[name]; ok && d != nil {
+			netDiff = *d
+		} else if cs, ok := chains[name]; ok {
+			netDiff = cs.Difficulty
+		}
+		if netDiff <= 0 {
+			continue
+		}
+		cur := c.st.Best[name]
+		for _, sh := range s.Shares {
+			luck := 100 * sh.Achieved / netDiff
+			if luck > cur.LuckPct {
+				cur = BestShare{
+					Difficulty: sh.Achieved, LuckPct: luck,
+					Worker: sh.Worker, At: time.UnixMilli(sh.T),
+				}
+			}
+		}
+		if cur.LuckPct > 0 {
+			c.st.Best[name] = cur
+		}
+	}
 }
 
 // refreshConfirmations asks each chain how deep our blocks are.

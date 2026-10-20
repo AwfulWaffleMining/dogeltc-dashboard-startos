@@ -202,7 +202,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       <div class="card accent">
         <div class="label">Hashrate</div>
         <div class="big" id="kHash">–</div>
-        <div class="kv"><span>24h avg <b id="kHash24">–</b></span><span>reject <b id="kRej">–</b></span></div>
+        <div class="kv"><span><span id="kHash24Label">24H</span> avg <b id="kHash24">–</b></span><span>reject <b id="kRej">–</b></span></div>
       </div>
       <div class="card">
         <div class="label">Workers</div>
@@ -215,7 +215,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
           <button id="kReset" type="button" class="linkish" title="Start counting again from now">reset</button>
         </div>
         <div class="big" id="kShares">–</div>
-        <div class="kv"><span>stale <b id="kStale">0</b></span><span>invalid <b id="kInvalid">0</b></span><span id="kSince">–</span></div>
+        <div class="kv"><span>rejected <b id="kStale">0</b></span><span id="kSince">–</span></div>
       </div>
       <div class="card">
         <div class="label">Next block (estimate)</div>
@@ -241,15 +241,10 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       <div class="legend" id="perfLegend"></div>
     </div>
 
-    <div class="grid g2" style="margin-top:12px">
-      <div class="card">
-        <div class="card-h"><h2 id="topTitle">Top workers</h2><button class="copy" data-goto="workers">all workers</button></div>
-        <div class="tablewrap"><table><thead><tr><th>Worker</th><th class="num">Diff</th><th class="num">Hashrate</th><th class="num">Last share</th></tr></thead><tbody id="topWorkers"></tbody></table></div>
-      </div>
-      <div class="card">
-        <div class="card-h"><h2 id="recentTitle">Recent blocks</h2><button class="copy" data-goto="blocks">earnings</button></div>
-        <div class="tablewrap"><table><thead><tr><th>Height</th><th>Chain</th><th>Worker</th><th class="num">Found</th></tr></thead><tbody id="recentBlocks"></tbody></table></div>
-      </div>
+    <div class="card" style="margin-top:12px">
+      <div class="card-h"><h2>Closest you have come</h2><span class="label" id="bestNote">best share so far</span></div>
+      <div class="grid g2" id="bestPair"></div>
+      <p class="hint">One share, two targets. Your best submission is a single number &mdash; what changes is which network you measure it against, and Dogecoin&rsquo;s is the easier of the two. That gap is why the same work gets further there.</p>
     </div>
   </section>
 
@@ -262,16 +257,11 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
           <button data-f="active" aria-pressed="false">Active <span id="cActive">0</span></button>
           <button data-f="offline" aria-pressed="false">Offline <span id="cOffline">0</span></button>
         </div>
-        <div class="range" id="workerAlgo">
-          <button data-a="all" aria-pressed="true">All algos</button>
-          <button data-a="litecoin" aria-pressed="false">Litecoin</button>
-          <button data-a="dogecoin" aria-pressed="false">Dogecoin</button>
-        </div>
-        <input type="text" id="workerSearch" placeholder="Search worker or address" style="margin-left:auto;width:260px">
+        <input type="text" id="workerSearch" placeholder="Search worker or account" style="margin-left:auto;width:260px">
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Worker</th><th>Account</th><th class="num">Diff</th><th class="num">Hashrate</th><th class="num">24h avg</th><th class="num">Difficulty</th><th class="num">Reject</th><th class="num">Last share</th><th>Status</th></tr></thead>
+          <thead><tr><th>Worker</th><th>Account</th><th class="num">Hashrate</th><th class="num">Share difficulty</th><th class="num">Shares</th><th class="num">Reject</th><th class="num">Last share</th><th>Status</th></tr></thead>
           <tbody id="workerRows"></tbody>
         </table>
       </div>
@@ -283,24 +273,24 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   <section id="tab-blocks" class="hidden">
     <div class="grid g4">
       <div class="card accent">
-        <div class="label">Blocks found</div>
-        <div class="big" id="bShares">0</div>
-        <div class="kv"><span id="bShareRate">–</span></div>
+        <div class="label"><span style="color:var(--ltc)">&#9679;</span> Litecoin blocks</div>
+        <div class="big" id="eLtcFound">0</div>
+        <div class="kv"><span id="eLtcRate">–</span></div>
       </div>
       <div class="card">
-        <div class="label">Block reward</div>
-        <div class="big" id="bPerShare">–</div>
-        <div class="kv"><span id="bPoolNote">a share of each block's reward pool</span></div>
+        <div class="label">Litecoin earned</div>
+        <div class="big" id="eLtcEarned">–</div>
+        <div class="kv"><span id="eLtcSplit">–</span></div>
+      </div>
+      <div class="card accent">
+        <div class="label"><span style="color:var(--doge)">&#9679;</span> Dogecoin blocks</div>
+        <div class="big" id="eDogeFound">0</div>
+        <div class="kv"><span id="eDogeRate">–</span></div>
       </div>
       <div class="card">
-        <div class="label">Earned</div>
-        <div class="big" id="bEarned">0 <small>DOGE</small></div>
-        <div class="kv"><span id="bEarnedSplit">–</span></div>
-      </div>
-      <div class="card">
-        <div class="label">Best share</div>
-        <div class="big" id="bBest">–</div>
-        <div class="kv"><span>of the network target</span></div>
+        <div class="label">Dogecoin earned</div>
+        <div class="big" id="eDogeEarned">–</div>
+        <div class="kv"><span id="eDogeSplit">–</span></div>
       </div>
     </div>
 
@@ -310,25 +300,10 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       <p class="hint">Every hash is tested against <b>both</b> networks at once. The stratum builds a Litecoin block whose coinbase commits to a Dogecoin block, so one scrypt solution can win on either chain &mdash; or both. Nothing is split and nothing is shared: this is one miner with two independent chances. Dogecoin's target is the easier of the two, so most wins land there first.</p>
     </div>
 
-    <div class="grid g2" style="margin-top:12px">
-      <div class="card">
-        <div class="card-h"><h2>Since your last block</h2><span class="label" id="dryChain"></span></div>
-        <div class="big" id="drySince">–</div>
-        <div class="kv"><span>typical gap <b id="dryExpected">–</b></span></div>
-        <div class="meter">
-          <div class="row"><span>0</span><span>2x typical</span></div>
-          <div class="track"><div class="fill" id="dryFill" style="width:0%"></div><div class="mark" style="left:50%"><span>typical</span></div></div>
-        </div>
-        <p class="hint">Each share is an independent roll; a long gap doesn't make the next one likelier.</p>
-      </div>
-      <div class="card">
-        <div class="card-h"><h2>How close shares get</h2><span class="label" id="histNote"></span></div>
-        <div class="hist" id="histBars"></div>
-        <p class="hint">Most shares fall well short; the last bucket cleared the network target.</p>
-      </div>
-    </div>
-
-      <div class="tablewrap"><table><thead><tr><th>Worker</th><th>How close</th><th class="num">Share difficulty</th><th class="num">When</th></tr></thead><tbody id="bestShares"></tbody></table></div>
+    <div class="card" style="margin-top:12px">
+      <div class="card-h"><h2>Best luck so far</h2><span class="label">how far one share got on each chain</span></div>
+      <div class="grid g2" id="luckPair"></div>
+      <p class="hint" id="luckNote"></p>
     </div>
   </section>
 
@@ -337,10 +312,9 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     <div class="grid g2">
       <div class="card">
         <div class="step"><div class="n">01</div><div>
-          <div class="label">Payout address</div>
-          <p class="hint">Payout addresses are set in this service’s StartOS settings, not here &mdash; so they never travel over the wire in a worker name. Your worker name is shown below.</p>
-          <input type="text" id="cAddr" placeholder="0x00…" style="width:100%;margin-top:8px" autocomplete="off" spellcheck="false">
-          <div id="cAddrErr" class="err-text hidden">Enter a 0x address with 40 hexadecimal characters.</div>
+          <div class="label">Payout destination</div>
+          <p class="hint">Set in this service’s StartOS settings, not here &mdash; so your addresses never travel over the wire in a worker name, and never hit the character limits some ASIC firmware chokes on.</p>
+          <div id="cPayout" class="st" style="margin-top:10px">–</div>
         </div></div>
         <div class="step"><div class="n">02</div><div>
           <div class="label">Worker name</div>
@@ -397,7 +371,6 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   // Block explorers for each chain, which
   // may not stay up. Both are Blockscout, so the /tx/ and /address/ paths match;
   // this is the only place the explorer is named.
-  const EXPLORER = 'https://explorer.qu.ai';
   const CHAINS = ['litecoin', 'dogecoin'];
   const CHAIN_NAME = { litecoin: 'Litecoin', dogecoin: 'Dogecoin' };
   const CHAIN_TICKER = { litecoin: 'LTC', dogecoin: 'DOGE' };
@@ -423,26 +396,22 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   // restarts, so the baseline re-anchors whenever they go backwards.
   const session = { start: Date.now(), base: {} };
   function sessionCounts(k, a) {
-    const cur = {
-      valid: a.sharesValid || 0,
-      stale: a.sharesStale || 0,
-      invalid: a.sharesInvalid || 0,
-    };
+    /* The stratum counts accepted and rejected, and nothing else, so neither
+       does this. A counter going backwards means the stratum restarted, which
+       rebases the session rather than printing a negative. */
+    const cur = { valid: a.sharesValid || 0, stale: a.sharesStale || 0 };
     const b = session.base[k];
-    if (!b || cur.valid < b.valid || cur.stale < b.stale || cur.invalid < b.invalid) {
-      session.base[k] = cur; // first sight, or the node restarted its counters
-      return { valid: 0, stale: 0, invalid: 0 };
+    if (!b || cur.valid < b.valid || cur.stale < b.stale) {
+      session.base[k] = cur;
+      return { valid: 0, stale: 0 };
     }
-    return {
-      valid: cur.valid - b.valid,
-      stale: cur.stale - b.stale,
-      invalid: cur.invalid - b.invalid,
-    };
+    return { valid: cur.valid - b.valid, stale: cur.stale - b.stale };
   }
+
 
   // Dashboard shows one algorithm at a time: hashrates of different algorithms are not comparable units.
   const savedChain = store.get('algo', '');
-  const state = { tab: 'dashboard', chain: CHAINS.includes(savedChain) ? savedChain : '', perfRange: '24h', shareRange: '1h', wFilter: 'all', wChain: 'all', demo: false, data: null };
+  const state = { tab: 'dashboard', chain: CHAINS.includes(savedChain) ? savedChain : '', perfRange: '24h', shareRange: '1h', wFilter: 'all', demo: false, data: null };
 
   // ── formatting ──────────────────────────────────────────────────────────
   const UNITS = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
@@ -480,15 +449,18 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     if (sec < 90) return Math.round(sec) + ' s';
     if (sec < 5400) return Math.round(sec / 60) + ' min';
     if (sec < 172800) return (sec / 3600).toFixed(1) + ' h';
-    if (sec < 86400 * 400) return (sec / 86400).toFixed(1) + ' days';
-    return (sec / 86400 / 365).toFixed(1) + ' years';
+    /* A decimal earns its place below ten of a unit and is noise above it:
+       "1.9 years" says something, "276.0 days" invents precision the estimate
+       does not have. */
+    const d1 = (v) => (v < 10 ? v.toFixed(1) : String(Math.round(v)));
+    if (sec < 86400 * 400) return d1(sec / 86400) + ' days';
+    return d1(sec / 86400 / 365) + ' years';
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) }
   const short = (a) => a && a.length > 14 ? a.slice(0, 6) + '…' + a.slice(-4) : (a || '');
   const pct = (x, d = 2) => isFinite(x) ? x.toFixed(d) + '%' : '–';
   // Percentages stop being readable past a few hundred: 21913.4% is 219x.
   const luckStr = (x) => !isFinite(x) || x <= 0 ? '–' : x >= 1000 ? (x / 100).toFixed(0) + 'x' : pct(x, x >= 10 ? 1 : 2);
-  const chainBadge = (a) => '<span class="badge" style="color:var(' + CHAIN_VAR[a] + ')">' + (CHAIN_NAME[a] || esc(a)) + '</span>';
   /* Every worker mines BOTH chains -- that is what merge mining is -- so
      this is not filtered by chain. The count is the same under either tab,
      and showing a worker only under one would be a lie about what it does. */
@@ -524,7 +496,6 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       workerName: 'awm7f3a.' + name, account: 'awm7f3a', rig: name,
       hashrate: h, hashrateErr: h ? 0.08 : 0, difficulty: h ? 1048576 : 0,
       sharesValid: Math.round(900 + rnd() * 3000), sharesStale: Math.round(rnd() * 3),
-      billable: Math.round(9e8 + rnd() * 4e8),
       lastShareAt: new Date(now - (h ? rnd() * 50000 : 3.2 * 3600e3)).toISOString(),
       status: h ? 'active' : 'offline',
     }));
@@ -562,11 +533,15 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     const chains = {
       litecoin: { hashrate: hs, hashrateErr: 0.07, difficulty: 38500000, netHashrate: 2.64e15,
         blockReward: 6.25, blockSeconds: 150, blocksFound: 0, node,
-        expectedDays: 694, oddsPerYear: 0.41, sharesValid: 7420, sharesStale: 6, bestLuck: 18.7 },
-      dogecoin: { hashrate: hs, hashrateErr: 0.07, difficulty: 38500000, netHashrate: 2.625e15,
+        expectedDays: 694, oddsPerYear: 0.41, sharesValid: 7420, sharesStale: 6,
+        best: { difficulty: 7200000, luckPct: 18.7, worker: 'awm7f3a.rig1',
+          at: new Date(now - 31 * 3600e3).toISOString() } },
+      dogecoin: { hashrate: hs, hashrateErr: 0.07, difficulty: 15400000, netHashrate: 2.625e15,
         blockReward: 10000, blockSeconds: 60, blocksFound: 1,
         node: { reachable: true, synced: true, height: 6423259, tip: 6423259, behind: 0 },
-        expectedDays: 276, oddsPerYear: 0.74, sharesValid: 7420, sharesStale: 6, bestLuck: 41.2 },
+        expectedDays: 276, oddsPerYear: 0.74, sharesValid: 7420, sharesStale: 6,
+        best: { difficulty: 7200000, luckPct: 46.75, worker: 'awm7f3a.rig1',
+          at: new Date(now - 31 * 3600e3).toISOString() } },
     };
     const summary = {
       chains, order: CHAINS, node, stratumOK: true, stratumPort: 3310,
@@ -668,25 +643,29 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     });
     const ws = d.workers;
     const active = ws.filter((w) => w.status === 'active');
-    const avg = ws.reduce((s, w) => s + (w.avg24h || 0), 0);
+    /* Averaged over the samples the chart is showing, so the two figures on
+       this page always agree. The history endpoint is fetched per range, so
+       the label follows it instead of claiming 24h over an hour of data. */
+    const hp = d.history[k] || [];
+    const avg = hp.length ? hp.reduce((sum, pt) => sum + (pt[1] || 0), 0) / hp.length : 0;
+    $('kHash24Label').textContent = state.perfRange.toUpperCase();
     const sess = sessionCounts(k, a);
-    const valid = sess.valid, stale = sess.stale, invalid = sess.invalid;
-    const total = valid + stale + invalid;
+    const valid = sess.valid, stale = sess.stale;
+    const total = valid + stale;
     $('kHash').innerHTML = hashHtml(a.hashrate || 0);
-    $('kHash24').textContent = hashStr(avg);
-    $('kRej').textContent = pct(total ? (100 * (stale + invalid)) / total : 0);
+    $('kHash24').textContent = hp.length ? hashStr(avg) : '–';
+    $('kRej').textContent = pct(total ? (100 * stale) / total : 0);
     $('kWorkers').textContent = ws.length;
     $('kActive').textContent = active.length;
     $('kOffline').textContent = ws.length - active.length;
     $('kShares').textContent = fmtNum(valid);
     $('kStale').textContent = fmtNum(stale);
-    $('kInvalid').textContent = fmtNum(invalid);
     $('kSince').textContent = 'over ' + dur((Date.now() - session.start) / 1000);
     /* Expected time to a block, computed server-side from this hashrate
        against the live network figure. Zero means no rate yet, which prints
        as a dash rather than an invented number. */
     $('kEta').textContent = a.expectedDays > 0 ? '~' + dur(a.expectedDays * 86400) : '–';
-    $('kBest').textContent = luckStr(a.bestLuck);
+    $('kBest').textContent = luckStr((a.best || {}).luckPct);
     /* Decimals matter here: Litecoin's subsidy is 6.25, and rounding it to
        6 understates every block by 4%. Dogecoin's 10,000 wants separators
        and no decimals, so format by magnitude rather than with one rule. */
@@ -697,14 +676,49 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
 
     drawPerf();
 
-    $('topTitle').textContent = 'Top ' + CHAIN_NAME[k] + ' workers';
-    $('recentTitle').textContent = 'Recent ' + CHAIN_NAME[k] + ' blocks';
-    const top = ws.slice().sort((x, y) => y.hashrate - x.hashrate).slice(0, 6);
-    $('topWorkers').innerHTML = top.length ? top.map((w) => '<tr><td>' + esc(w.workerName || 'default') + '</td><td class="num mono">' + fmtNum(w.difficulty || 0) + '</td><td class="num">' + hashStr(w.hashrate) + '</td><td class="num">' + ago(w.lastShareAt) + '</td></tr>').join('')
-      : '<tr><td colspan="4" class="empty">No miners yet. Open How to connect to point one here.</td></tr>';
-    const bl = d.blocks.filter((b) => b.chain === k).slice(0, 5);
-    $('recentBlocks').innerHTML = bl.length ? bl.map((b) => '<tr><td class="mono">#' + fmtNum(b.height) + '</td><td>' + chainBadge(b.chain) + '</td><td>' + esc(b.worker) + '</td><td class="num">' + ago(b.foundAt) + '</td></tr>').join('')
-      : '<tr><td colspan="4" class="empty">No ' + CHAIN_NAME[k] + ' blocks yet. Keep hashing.</td></tr>';
+    renderBestPair('bestPair', d, 'difficulty');
+    const anyBest = CHAINS.some((c) => ((d.summary.chains[c] || {}).best || {}).luckPct > 0);
+    $('bestNote').textContent = anyBest ? 'best share so far' : 'no shares yet';
+  }
+
+  /* One share, two targets -- so the panels differ only in what they are
+   * measured against. `lead` picks which figure is shouted: the raw
+   * difficulty on the dashboard, the percentage on the earnings page.
+   *
+   * Built as a pair on purpose. A solo rig at these odds mostly shows zero
+   * blocks found, and a page of zeroes says nothing about whether the
+   * hardware is working. How close you have come is always a real number,
+   * only ever improves, and makes the asymmetry between the chains visible. */
+  function renderBestPair(target, d, lead) {
+    $(target).innerHTML = CHAINS.map((c) => {
+      const cs = d.summary.chains[c] || {};
+      const best = cs.best || {};
+      const pct = best.luckPct || 0;
+      const col = 'var(' + CHAIN_VAR[c] + ')';
+      /* Square-root scale on the bar. On a linear one every honest solo
+         share is an invisible sliver against 100%, which reads as broken
+         rather than as unlikely. */
+      const fill = pct > 0 ? Math.max(1.5, Math.min(100, Math.sqrt(pct) * 10)) : 0;
+      const headline = !pct ? '–'
+        : lead === 'difficulty' ? fmtNum(Math.round(best.difficulty || 0))
+        : luckStr(pct);
+      const sub = !pct ? 'no shares yet'
+        : lead === 'difficulty'
+          ? luckStr(pct) + ' of a ' + CHAIN_NAME[c] + ' block'
+          : 'share difficulty ' + fmtNum(Math.round(best.difficulty || 0));
+      const need = pct > 0 && pct < 100 ? (100 / pct) : 0;
+      return '<div class="card" style="padding:16px 18px;border-color:' + (pct ? col : 'var(--line)') + '">'
+        + '<div class="label"><span style="color:' + col + '">&#9679;</span> ' + CHAIN_NAME[c] + '</div>'
+        + '<div class="big" style="font-size:30px;color:' + (pct ? col : 'var(--dim)') + '">' + headline + '</div>'
+        + '<div class="kv" style="margin-bottom:10px"><span>' + sub + '</span></div>'
+        + '<div class="track"><div class="fill" style="width:' + fill.toFixed(1) + '%;background:' + col + '"></div></div>'
+        + '<div class="kv" style="margin-top:8px">'
+        + (need > 1
+            ? '<span>needed <b>' + (need >= 100 ? fmtNum(Math.round(need)) : need.toFixed(1)) + '\u00d7</b> more</span>'
+            : pct >= 100 ? '<span><b>cleared the target</b></span>' : '<span>&nbsp;</span>')
+        + (best.at ? '<span>' + ago(best.at) + '</span>' : '')
+        + '</div></div>';
+    }).join('');
   }
 
   function renderWorkers() {
@@ -714,119 +728,115 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     $('cActive').textContent = all.filter((w) => w.status === 'active').length;
     $('cOffline').textContent = all.filter((w) => w.status !== 'active').length;
     const rows = all.filter((w) => state.wFilter === 'all' || (state.wFilter === 'active' ? w.status === 'active' : w.status !== 'active'))
-      .filter((w) => !q || (w.workerName || '').toLowerCase().includes(q) || (w.address || '').toLowerCase().includes(q))
+      .filter((w) => !q || (w.workerName || '').toLowerCase().includes(q) || (w.account || '').toLowerCase().includes(q))
       .sort((x, y) => y.hashrate - x.hashrate);
     $('workerRows').innerHTML = rows.length ? rows.map((w) => {
-      const t = w.sharesValid + w.sharesStale + w.sharesInvalid;
-      const rej = t ? (100 * (w.sharesStale + w.sharesInvalid)) / t : 0;
+      const t = (w.sharesValid || 0) + (w.sharesStale || 0);
+      const rej = t ? (100 * (w.sharesStale || 0)) / t : 0;
       const st = w.status === 'active' ? '<span class="st" style="color:var(--green)"><span class="dot ok"></span>active</span>' : '<span class="st" style="color:var(--amber)"><span class="dot warn"></span>offline</span>';
-      return '<tr><td>' + esc(w.workerName || 'default') + '</td><td class="mono" title="' + esc(w.address) + '">' + esc(short(w.address)) + '</td><td>' + chainBadge(w.algorithm) + '</td><td class="num">' + hashStr(w.hashrate) + '</td><td class="num">' + hashStr(w.avg24h || 0) + '</td><td class="num">' + fmtCompact(w.difficulty || 0) + '</td><td class="num">' + pct(rej) + '</td><td class="num">' + ago(w.lastShareAt) + '</td><td>' + st + '</td></tr>';
-    }).join('') : '<tr><td colspan="9" class="empty">No workers match.</td></tr>';
+      return '<tr><td title="' + esc(w.workerName || '') + '">' + esc(w.rig || w.workerName || 'default') + '</td>'
+        + '<td class="mono">' + esc(w.account || '') + '</td>'
+        + '<td class="num">' + hashStr(w.hashrate) + '</td>'
+        + '<td class="num">' + fmtCompact(w.difficulty || 0) + '</td>'
+        + '<td class="num">' + fmtNum(w.sharesValid || 0) + '</td>'
+        + '<td class="num">' + pct(rej) + '</td>'
+        + '<td class="num">' + ago(w.lastShareAt) + '</td><td>' + st + '</td></tr>';
+    }).join('') : '<tr><td colspan="8" class="empty">No workers match.</td></tr>';
   }
 
   function renderBlocks() {
     const d = state.data;
     const items = d.blocks || [];
-    const ck = state.chain;
-    const mine = items.filter((b) => b.chain === ck);
-    const live = mine.filter((b) => !b.orphaned);
-    const mature = live.filter((b) => b.mature);
-    const orphanCount = mine.length - live.length;
-    const chainSum = d.summary.chains[ck] || {};
-    const ticker = CHAIN_TICKER[ck] || '';
 
-    $('bShares').textContent = fmtNum(live.length);
-    $('bPerShare').innerHTML = chainSum.blockReward
-      ? (chainSum.blockReward >= 1000 ? fmtNum(chainSum.blockReward) : String(chainSum.blockReward))
-        + '<small>' + esc(ticker) + '</small>'
-      : '–';
-    $('bPoolNote').textContent = 'paid in full to you, straight from the coinbase';
+    CHAINS.forEach((c) => {
+      const key = c === 'litecoin' ? 'Ltc' : 'Doge';
+      const cs = d.summary.chains[c] || {};
+      const mine = items.filter((b) => b.chain === c);
+      const live = mine.filter((b) => !b.orphaned);
+      const mature = live.filter((b) => b.mature);
+      const orphans = mine.length - live.length;
+      const ticker = CHAIN_TICKER[c] || '';
+      const rw = cs.blockReward || 0;
+      const fmtR = (v) => (v >= 1000 ? fmtNum(v) : String(Math.round(v * 100) / 100));
 
-    /* Found and spendable are different states. A coinbase is locked for 100
-       confirmations, so counting an immature block as money would overstate
-       what you actually have. */
-    const earned = mature.length * (chainSum.blockReward || 0);
-    const pending = (live.length - mature.length) * (chainSum.blockReward || 0);
-    $('bEarned').innerHTML = esc(fmtNum(earned)) + '<small>' + esc(ticker) + '</small>';
-    $('bEarnedSplit').innerHTML = live.length
-      ? '<b>' + mature.length + '</b> of ' + live.length + ' matured'
-        + (pending > 0 ? ' · <b>' + fmtNum(pending) + '</b> ' + esc(ticker) + ' still locked' : '')
-        + (orphanCount ? ' · <b>' + orphanCount + '</b> orphaned' : '')
-      : 'nothing found yet \u2014 at solo odds that is the normal state';
+      $('e' + key + 'Found').textContent = fmtNum(live.length);
+      $('e' + key + 'Rate').textContent = cs.expectedDays > 0
+        ? 'about one every ' + dur(cs.expectedDays * 86400)
+        : 'connect a miner to see the odds';
 
-    // expected gap between blocks, from the collector's own arithmetic
-    const k = state.chain;
-    const a = d.summary.chains[k] || {};
-    /* Expected seconds between blocks ON THIS CHAIN. The collector already
-       works this out from your share of the network and that chain's block
-       time, so it is read rather than re-derived -- two implementations of
-       the same arithmetic is two chances to disagree on screen. */
-    const expectedGap = a.expectedDays > 0 ? a.expectedDays * 86400 : 0;
-    $('dryChain').textContent = CHAIN_NAME[k];
-    const last = live.length ? new Date(live[0].foundAt).getTime() : 0;
-    const since = last ? (Date.now() - last) / 1000 : 0;
-    $('drySince').textContent = last ? dur(since) : '–';
-    $('dryExpected').textContent = expectedGap ? dur(expectedGap) : '–';
-    $('dryFill').style.width = expectedGap ? Math.min(100, (100 * since) / (2 * expectedGap)).toFixed(1) + '%' : '0%';
-    $('bShareRate').innerHTML = expectedGap ? 'about one every <b>' + dur(expectedGap) + '</b>' : 'connect a miner to see your rate';
-
-
-    $('bBest').textContent = luckStr(a.bestLuck);
-
-    // rail
-    $('railNote').textContent = items.length ? fmtNum(items.length) + ' minted · ' + esc(earned.toFixed(2)) + ' DOGE' : '';
-    $('blockRail').innerHTML = items.length ? items.slice(0, 40).map((b) => {
-      const kind = b.kind || 'unverified';
-      const label = b.orphaned ? 'orphaned' : b.mature ? 'block' : 'confirming';
-      const paid = b.paidReward > 0;
-      const orphaned = !paid && b.payoutState === 'orphaned';
-      const amount = paid ? b.paidReward : orphaned ? 0 : b.estReward;
-      // Link to the transaction that paid us once it is on chain; until then the
-      // reward is earned but not yet confirmed, so there is nothing to point at.
-      const link = paid
-        ? '<a href="' + EXPLORER + '/tx/' + esc(b.paidTx) + '" target="_blank" rel="noopener noreferrer">paid in ' + fmtNum(b.paidHeight) + '</a>'
-        : orphaned
-          ? '<span class="orph" title="Accepted by your node but not included in a block in time to earn">not rewarded</span>'
-          : '<span class="dim">awaiting confirmation</span>';
-      return '<div class="blk ' + kind + (paid ? ' paid' : orphaned ? ' orphaned' : '') + '">' +
-        '<span class="st">' + (orphaned ? 'orphaned' : label) + '</span>' +
-        '<div class="h">#' + fmtNum(b.height) + '</div>' +
-        '<div class="rw">' + (amount ? amount.toFixed(2) : '–') + ' <span class="label">DOGE</span>' + (paid || orphaned ? '' : ' <span class="label" title="estimated until the payout lands">est</span>') + '</div>' +
-        '<div class="meta">' + esc(b.worker.split('.').pop()) + ' · ' + ago(b.foundAt) + '<br>' + link + '</div>' +
-        '</div>';
-    }).join('') : '<div class="empty" style="flex:1">Nothing yet. Every share is a roll of the dice; the histogram below shows how close they are coming.</div>';
-
-    // histogram of how close shares get, in decades of the threshold
-    const all = [];
-    CHAINS.forEach((kk) => (d.shares[kk] || []).forEach((sh) => all.push((100 * sh.diff) / Math.max(1e-12, sh.threshold))));
-    const buckets = [0, 0, 0, 0, 0];
-    all.forEach((v) => {
-      const i = v >= 100 ? 4 : v >= 10 ? 3 : v >= 1 ? 2 : v >= 0.1 ? 1 : 0;
-      buckets[i]++;
+      /* Matured only. A coinbase is locked for 100 confirmations, and
+         counting a fresh block as money overstates what you can actually
+         spend. What is still locked is named separately rather than folded
+         in. */
+      $('e' + key + 'Earned').innerHTML = live.length
+        ? fmtR(mature.length * rw) + '<small>' + esc(ticker) + '</small>'
+        : '–';
+      $('e' + key + 'Split').innerHTML = live.length
+        ? '<b>' + mature.length + '</b> of ' + live.length + ' matured'
+          + (orphans ? ' · <b>' + orphans + '</b> orphaned' : '')
+        : 'nothing yet \u2014 at solo odds that is normal';
     });
-    const labels = ['&lt;0.1%', '0.1–1%', '1–10%', '10–100%', 'threshold'];
-    const peak = Math.max(1, ...buckets);
-    $('histNote').textContent = all.length ? fmtNum(all.length) + ' shares · ' + state.shareRange : 'no shares yet';
-    $('histBars').innerHTML = buckets.map((n, i) =>
-      '<div class="col"><span class="n">' + fmtNum(n) + '</span><div class="b' + (i === 4 ? ' win' : '') + '" style="height:' + Math.max(2, (100 * n) / peak).toFixed(1) + '%"></div><span class="lab">' + labels[i] + '</span></div>').join('');
-    // Rolling 12 months: the tiers are about accumulation, not the live view, and
-    // twelve months matches the longest lock. Orphans earned nothing, so they are out.
-    const yearAgo = Date.now() - 365 * 86400e3;
-    const inWindow = items.filter((b) => new Date(b.foundAt).getTime() >= yearAgo);
-    const paidItems = inWindow.filter((b) => b.paidReward > 0 || b.payoutState !== 'orphaned');
-    const oldest = items.length ? Math.min(...items.map((b) => new Date(b.foundAt).getTime())) : Date.now();
 
-    // best shares
-    const flat = [];
-    CHAINS.forEach((kk) => (d.shares[kk] || []).forEach((sh) => flat.push({ k: kk, luck: (100 * sh.diff) / Math.max(1e-12, sh.threshold), diff: sh.diff, t: sh.t })));
-    flat.sort((x, y) => y.luck - x.luck);
-    $('bestShares').innerHTML = flat.length ? flat.slice(0, 6).map((sh) => {
-      const hit = sh.luck >= 100;
-      return '<tr><td>' + chainBadge(sh.k) + '</td><td><div class="bar"><i style="width:' + Math.min(100, sh.luck).toFixed(0) + '%"></i><b' + (hit ? ' class="hit"' : '') + '>' + luckStr(sh.luck) + (hit ? ' — cleared' : '') + '</b></div></td><td class="num">' + fmtCompact(sh.diff) + '</td><td class="num">' + ago(sh.t) + '</td></tr>';
-    }).join('') : '<tr><td colspan="4" class="empty">No shares in this range yet.</td></tr>';
+    renderBestPair('luckPair', d, 'luck');
+
+    /* The ratio between the two is the interesting number, and it is the
+       reason this package exists: the same share gets measurably further
+       against Dogecoin, so that is where a win most likely lands. */
+    const lb = ((d.summary.chains.litecoin || {}).best || {});
+    const db = ((d.summary.chains.dogecoin || {}).best || {});
+    const lp = lb.luckPct || 0, dp = db.luckPct || 0;
+    /* Usually one share holds both records, because luck against the two
+       targets moves together. Not always: each record is kept against the
+       network difficulty of its own moment, so a share can be a personal best
+       on one chain and not the other. Say which case this is rather than
+       asserting the common one. */
+    const sameShare = lb.at && lb.at === db.at && lb.difficulty === db.difficulty;
+    $('luckNote').innerHTML = (lp > 0 && dp > 0)
+      ? (sameShare
+          ? 'The same share, measured twice. It got <b>' + (dp / lp).toFixed(1)
+            + '\u00d7</b> further against Dogecoin than against Litecoin'
+          : 'Two different shares hold these records. Your best against Dogecoin got <b>'
+            + (dp / lp).toFixed(1) + '\u00d7</b> further than your best against Litecoin')
+        + ' \u2014 which is why, if you ever win, it will most likely be Dogecoin first.'
+      : 'Your best share is one number tested against both networks. Dogecoin\u2019s target is the easier of the two, so the same work always gets further there.';
+
+    renderRail(items);
   }
 
-  // ── charts (plain SVG, no library) ──────────────────────────────────────
+  function renderRail(items) {
+    /* Newest first, and capped: a rail is for glancing at, and anyone with
+       more than a dozen blocks has better tools than this page. */
+    const rail = items.slice(0, 24);
+    $('railNote').textContent = rail.length
+      ? rail.length + (rail.length === 1 ? ' block' : ' blocks')
+      : 'none yet';
+    $('blockRail').innerHTML = rail.length ? rail.map((b) => {
+      const col = 'var(' + (CHAIN_VAR[b.chain] || '--dim') + ')';
+      /* The top edge and state text carry maturity -- green spendable, blue
+         still locked, dim orphaned. The chain is a coloured dot, so a mixed
+         rail is readable without reading. */
+      const kind = b.orphaned ? 'orphaned' : b.mature ? 'block' : 'pending';
+      const state = b.orphaned ? 'orphaned' : b.mature ? 'spendable' : 'locked';
+      const rw = b.reward || 0;
+      const conf = Math.max(0, b.confirmations || 0);
+      return '<div class="blk ' + kind + '">'
+        + '<span class="st"><span class="algo-dot" style="background:' + col + '"></span>'
+          + esc(CHAIN_NAME[b.chain] || b.chain) + ' \u00b7 ' + state + '</span>'
+        + '<div class="h">#' + fmtNum(b.height) + '</div>'
+        + '<div class="rw">' + (rw >= 1000 ? fmtNum(rw) : rw.toFixed(2))
+          + ' <span class="label">' + esc(CHAIN_TICKER[b.chain] || '') + '</span></div>'
+        /* Worker on its own line: a 185px card ellipsises anything longer,
+           and the rig that found it is the part worth reading. */
+        + '<div class="meta" title="' + esc(b.worker || '') + '">' + esc(String(b.worker || '').split('.').pop()) + '<br>'
+        + ago(b.foundAt) + ' \u00b7 '
+        + (b.orphaned
+            ? '<span class="dim" title="Your node accepted it, but the network kept another block at this height">not rewarded</span>'
+            : b.mature ? 'matured' : fmtNum(conf) + '/100 conf')
+        + '</div></div>';
+    }).join('')
+      : '<div class="empty" style="flex:1">No blocks yet \u2014 at solo odds that is the expected state, not a fault. How close you have come is below.</div>';
+  }
+
   const NS = 'http://www.w3.org/2000/svg';
   function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e }
   function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p }
@@ -906,16 +916,33 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     pressGroup('cChain', 'v', cfg.chain); pressGroup('cDiff', 'v', cfg.diff);
     $('cFixedBox').classList.toggle('hidden', cfg.diff !== 'fixed');
     const host = location.hostname || 'your-server.local';
-    $('oUrl').textContent = 'stratum+tcp://' + host + ':' + PORT[cfg.algo];
-    const addr = $('cAddr').value.trim(); const worker = $('cWorker').value.trim().replace(/[^A-Za-z0-9_-]/g, '');
-    const okAddr = /^0x[0-9a-fA-F]{40}$/.test(addr);
-    $('cAddrErr').classList.toggle('hidden', !addr || okAddr);
-    $('oUser').textContent = (okAddr ? addr : '0xYourAddress') + (worker ? '.' + worker : '');
+    const sum = (state.data && state.data.summary) || {};
+    $('oUrl').textContent = 'stratum+tcp://' + host + ':' + (PORT[cfg.chain] || PORT.litecoin || 3310);
+    const worker = $('cWorker').value.trim().replace(/[^A-Za-z0-9_-]/g, '');
+    /* The username is the account the stratum generated, never a payout
+       address: addresses are config, and stratum v1 is plaintext. Until the
+       stats API answers there is nothing real to copy, so say so rather than
+       show a plausible-looking placeholder someone would paste into firmware. */
+    const hint = String(sum.workerHint || '');
+    const account = hint.split('.')[0];
+    $('oUser').textContent = account
+      ? account + '.' + (worker || hint.split('.').slice(1).join('.') || 'rig1')
+      : 'waiting for the stratum…';
+
+    /* What the miner is actually paying into. 'unset' is not a cosmetic
+       state: the stratum refuses to bind its port, so a rig pointed here
+       will not connect at all. */
+    const mode = sum.payoutMode;
+    $('cPayout').innerHTML = mode === 'addresses'
+      ? '<span class="dot ok"></span> paying addresses you control'
+      : mode === 'nodeWallet'
+        ? '<span class="dot ok"></span> paying each node\u2019s own wallet'
+        : '<span class="dot warn"></span> not set \u2014 choose one in this service\u2019s StartOS settings. Until you do, the stratum does not accept miners.';
     const parts = [];
     if (cfg.diff === 'fixed') {
       const h = parseFloat($('cRate').value) * parseFloat($('cUnit').value);
       if (h > 0) {
-        const dval = (h * 30) / DIFF1[cfg.algo];
+        const dval = (h * 30) / DIFF1[cfg.chain];
         const shown = dval >= 100 ? Math.round(dval) : +dval.toPrecision(3);
         parts.push('d=' + shown);
         $('cDiffHint').textContent = 'd=' + shown + ' gives about one share every 30 seconds';
@@ -941,9 +968,6 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   document.querySelectorAll('#histChain .segb').forEach((b) => b.addEventListener('click', () => {
     state.chain = b.dataset.algo; store.set('algo', state.chain); renderDashboard();
   }));
-  document.querySelectorAll('#workerAlgo button').forEach((b) => b.addEventListener('click', () => {
-    state.wChain = b.dataset.a; document.querySelectorAll('#workerAlgo button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); renderWorkers();
-  }));
   document.querySelectorAll('.range[data-range-for]').forEach((grp) => grp.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
     grp.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
     if (grp.dataset.rangeFor === 'perf') state.perfRange = b.dataset.range; else state.shareRange = b.dataset.range;
@@ -956,8 +980,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   [['cChain', 'chain'], ['cDiff', 'diff']].forEach(([id, key]) => document.querySelectorAll('#' + id + ' .opt').forEach((b) => b.addEventListener('click', () => {
     cfg[key] = b.dataset.v; store.set('c.' + key, cfg[key]); renderConnect();
   })));
-  $('cAddr').value = store.get('c.addr', ''); $('cWorker').value = store.get('c.worker', '');
-  $('cAddr').addEventListener('input', () => { store.set('c.addr', $('cAddr').value.trim()); renderConnect() });
+  $('cWorker').value = store.get('c.worker', '');
   $('cWorker').addEventListener('input', () => { store.set('c.worker', $('cWorker').value.trim()); renderConnect() });
   $('cRate').addEventListener('input', renderConnect); $('cUnit').addEventListener('change', renderConnect);
   document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {

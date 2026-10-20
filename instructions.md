@@ -49,10 +49,17 @@ Blocks are occasionally **orphaned** — two miners find one at nearly the same 
 
 ## Reading the dashboard
 
-- **Hashrate** — what the server measures from your shares, not what your miner claims. They should agree closely. A number appears only once there are enough shares to support one; "warming up" means exactly that.
-- **Next block (estimate)** — your share of that chain's network, turned into a time. It is an average, not a countdown. A long gap does not make the next one likelier.
-- **How close shares get** — how near your submissions came to winning. Mostly a reminder of the scale involved.
-- **The chain tabs** — Litecoin and Dogecoin show the same hashrate, because it is the same work. What differs is difficulty, reward, and odds.
+**Hashrate** — what the server measures from your shares, not what your miner claims. They should agree closely. A number appears only once there are enough shares to support one; "warming up" means exactly that.
+
+**Next block (estimate)** — your share of that chain's network, turned into a time. It is an average, not a countdown. A long gap does not make the next one likelier.
+
+**Closest you have come** — your luckiest share so far, shown against each chain side by side. It is **one** share: what changes between the two panels is the target it is measured against. Dogecoin's is the easier of the two, so the same work always gets further there, and the bars show that gap at a glance.
+
+This is the number to watch, because it moves. Blocks found will read zero for a long time at solo odds, and a screen of zeroes tells you nothing about whether your miners are working. How close you have come only ever improves.
+
+**Earnings** — blocks found and coins earned, per chain, with the blocks themselves below. Found and matured are counted separately: every coinbase is locked for 100 confirmations.
+
+**The chain tabs on the hashrate chart** — Litecoin and Dogecoin show the same hashrate, because it is the same work. What differs is difficulty, reward, and odds.
 
 ## If something looks wrong
 
