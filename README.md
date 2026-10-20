@@ -66,7 +66,7 @@ Payouts have three states, and `unset` is the shipped one:
 
 ## The data model
 
-**ONE hashrate, ONE share stream, TWO targets.** Per-chain hashrate is a fiction, so the same figure appears under both chains. Workers are never filtered by chain — every rig mines both. Only **blocks** belong to a chain.
+**ONE hashrate, ONE share stream, TWO targets.** Per-chain hashrate is a fiction. The collector keeps a history series per chain, but computes the rate and the reject percentage once and writes the same values into every series — so the dashboard shows a single merged chart with no chain selector, because a selector would imply a division that does not happen. Workers are never filtered by chain either: every rig mines both. Only **blocks** belong to a chain.
 
 Shares are reported per chain anyway, because the same share is tested against two different targets: a submission that is 0.3% of Dogecoin's target is a smaller fraction of Litecoin's.
 

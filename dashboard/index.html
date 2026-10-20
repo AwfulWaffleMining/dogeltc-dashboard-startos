@@ -58,13 +58,9 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:14p
 .demo{color:var(--amber);border-color:var(--amber)}
 nav.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0}
 .tabs,.seg{display:flex;gap:4px;flex-wrap:wrap}
-.tab,.segb{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;background:transparent;color:var(--muted);border:1px solid transparent;border-radius:6px;padding:8px 12px;cursor:pointer}
-.tab:hover,.segb:hover{color:var(--text);border-color:var(--line-2)}
+.tab{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;background:transparent;color:var(--muted);border:1px solid transparent;border-radius:6px;padding:8px 12px;cursor:pointer}
+.tab:hover{color:var(--text);border-color:var(--line-2)}
 .tab[aria-selected="true"]{color:var(--text);border-color:var(--red-line);background:var(--red-soft)}
-.segb{display:inline-flex;align-items:center;gap:7px;border-color:var(--line)}
-.segb[aria-pressed="true"]{color:var(--text);border-color:var(--line-2);background:var(--panel-2)}
-.segb .cnt{color:var(--dim)}
-.segb .cnt:empty{display:none}
 .banner{display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--amber);background:var(--amber-soft);border-radius:10px;margin-bottom:14px}
 .banner .t{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber)}
 .bar-track{height:4px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:6px}
@@ -95,7 +91,6 @@ th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:upp
 td{padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}
 tr:last-child td{border-bottom:0}
 td.num,th.num{text-align:right;font-family:var(--mono)}
-.badge{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:4px;border:1px solid currentColor}
 .st{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;display:inline-flex;align-items:center;gap:6px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 input[type=text],input[type=number],select{font-family:var(--mono);font-size:13px;background:var(--panel-2);color:var(--text);border:1px solid var(--line-2);border-radius:6px;padding:9px 11px;min-width:0}
@@ -227,19 +222,17 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
 
     <div class="card" style="margin-top:12px">
       <div class="card-h">
-        <h2>Hashrate history</h2>
-        <div class="seg" id="histChain" style="margin-left:auto">
-          <button class="segb" data-algo="litecoin" aria-pressed="true"><span class="algo-dot" style="background:var(--ltc)"></span>Litecoin <span class="cnt"></span></button>
-          <button class="segb" data-algo="dogecoin" aria-pressed="false"><span class="algo-dot" style="background:var(--doge)"></span>Dogecoin <span class="cnt"></span></button>
-        </div>
+        <h2>Merged hashrate</h2>
+        <span class="label" style="margin-left:auto">one stream, both chains</span>
         <div class="range" data-range-for="perf">
           <button data-range="1h" aria-pressed="false">1H</button>
           <button data-range="24h" aria-pressed="true">24H</button>
           <button data-range="7d" aria-pressed="false">7D</button>
         </div>
       </div>
-      <svg id="perfChart" class="chart" viewBox="0 0 1000 280" role="img" aria-label="Hashrate and reject rate over time for the selected algorithm"></svg>
+      <svg id="perfChart" class="chart" viewBox="0 0 1000 280" role="img" aria-label="Merged hashrate and reject rate over time"></svg>
       <div class="legend" id="perfLegend"></div>
+      <p class="hint">One figure, not two: every share is one scrypt hash tested against both targets, so there is no Litecoin rate and Dogecoin rate to tell apart. Splitting this chart in two would imply a division that does not happen.</p>
     </div>
 
     <div class="card" style="margin-top:12px">
@@ -411,8 +404,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
 
 
   // Dashboard shows one algorithm at a time: hashrates of different algorithms are not comparable units.
-  const savedChain = store.get('algo', '');
-  const state = { tab: 'dashboard', chain: CHAINS.includes(savedChain) ? savedChain : '', perfRange: '24h', shareRange: '1h', wFilter: 'all', demo: false, data: null };
+  const state = { tab: 'dashboard', perfRange: '24h', shareRange: '1h', wFilter: 'all', demo: false, data: null };
 
   // ── formatting ──────────────────────────────────────────────────────────
   const UNITS = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
@@ -465,7 +457,6 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   /* Every worker mines BOTH chains -- that is what merge mining is -- so
      this is not filtered by chain. The count is the same under either tab,
      and showing a worker only under one would be a lie about what it does. */
-  const activeCount = () => state.data ? state.data.workers.filter((w) => w.status === 'active').length : 0;
 
   // ── data ────────────────────────────────────────────────────────────────
   async function getJSON(path) {
@@ -622,10 +613,6 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     } else {
       $('syncBanner').querySelector('.t').textContent = 'Node syncing';
     }
-    if (!state.chain) {
-      // default: the algorithm with the most active miners
-      state.chain = CHAINS[0];
-    }
     // Render each tab independently: a failure in one must not blank the rest.
     for (const [name, fn] of [['dashboard', renderDashboard], ['workers', renderWorkers], ['blocks', renderBlocks], ['connect', renderConnect]]) {
       try {
@@ -637,11 +624,12 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   }
 
   function renderDashboard() {
-    const d = state.data; const k = state.chain; const a = d.summary.chains[k] || {};
-    document.querySelectorAll('#histChain .segb').forEach((b) => {
-      b.setAttribute('aria-pressed', String(b.dataset.algo === k));
-      const n = activeCount(); b.querySelector('.cnt').textContent = n ? '\u00b7 ' + n : '';
-    });
+    /* Hashrate, shares and reject are one stream tested against two targets,
+       and the collector writes the same figures under every chain. Read them
+       from whichever chain is reporting; there is nothing to choose between. */
+    const d = state.data;
+    const k = CHAINS.find((c) => d.summary.chains[c]) || CHAINS[0];
+    const a = d.summary.chains[k] || {};
     const ws = d.workers;
     const active = ws.filter((w) => w.status === 'active');
     /* Averaged over the samples the chart is showing, so the two figures on
@@ -872,17 +860,22 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   function drawPerf() {
     const svg = $('perfChart'); svg.innerHTML = '';
     const W = 1000, H = 280, L = 80, R = 50, T = 14, B = 30;
-    const k = state.chain; const col = css(CHAIN_VAR[k]);
-    const pts = state.data.history[k] || [];
+    /* Every chain's series carries the same rate, so take the longest rather
+       than a chosen one: if a node was down when the collector started, its
+       series begins late while the other is complete. */
+    const col = css('--ltc'), col2 = css('--doge');
+    const pts = CHAINS
+      .map((c) => state.data.history[c] || [])
+      .reduce((best, cur) => (cur.length > best.length ? cur : best), []);
     const setLegend = (cur, avg) => {
       $('perfLegend').innerHTML =
-        '<span><i style="background:var(' + CHAIN_VAR[k] + ');height:9px;width:9px;border-radius:2px"></i>Current: <b style="color:var(--text);font-weight:500">' + esc(cur) + '</b></span>' +
+        '<span><i style="background:linear-gradient(90deg,var(--ltc),var(--doge));height:9px;width:9px;border-radius:2px"></i>Current: <b style="color:var(--text);font-weight:500">' + esc(cur) + '</b></span>' +
         '<span><i style="background:var(--green);height:9px;width:9px;border-radius:2px"></i>' + state.perfRange.toUpperCase() + ' avg: <b style="color:var(--text);font-weight:500">' + esc(avg) + '</b></span>' +
         '<span><i style="background:var(--muted);height:1px"></i>reject %</span>';
     };
     setLegend('–', '–');
     if (!pts.length || !pts.some((p) => p[1] > 0)) {
-      el('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle' }, svg).textContent = 'No ' + CHAIN_NAME[k] + ' hashrate recorded in this range yet';
+      el('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle' }, svg).textContent = 'No hashrate recorded in this range yet';
       return;
     }
     const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
@@ -918,13 +911,18 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     for (let i = 0; i <= 5; i++) { const t = t0 + ((t1 - t0) * i) / 5; el('text', { x: X(t), y: H - 8, 'text-anchor': 'middle' }, svg).textContent = timeLabel(t, t1 - t0) }
     const defs = el('defs', {}, svg);
     const g = el('linearGradient', { id: 'gHash', x1: 0, x2: 0, y1: 0, y2: 1 }, defs);
-    el('stop', { offset: '0%', 'stop-color': col, 'stop-opacity': 0.28 }, g);
-    el('stop', { offset: '100%', 'stop-color': col, 'stop-opacity': 0 }, g);
+    el('stop', { offset: '0%', 'stop-color': col, 'stop-opacity': 0.26 }, g);
+    el('stop', { offset: '100%', 'stop-color': col2, 'stop-opacity': 0 }, g);
+    const gl = el('linearGradient', { id: 'gMerge', x1: 0, x2: 1, y1: 0, y2: 0 }, defs);
+    el('stop', { offset: '0%', 'stop-color': col }, gl);
+    el('stop', { offset: '100%', 'stop-color': col2 }, gl);
     const line = plot.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
     el('path', { d: line + 'L' + X(plot[plot.length - 1][0]).toFixed(1) + ' ' + (H - B) + 'L' + X(plot[0][0]).toFixed(1) + ' ' + (H - B) + 'Z', fill: 'url(#gHash)' }, svg);
-    el('path', { d: line, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-linejoin': 'miter' }, svg);
-    plot.forEach((p) => {
-      const c = el('circle', { cx: X(p[0]).toFixed(1), cy: Y(p[1]).toFixed(1), r: 3.4, fill: css('--panel'), stroke: col, 'stroke-width': 2 }, svg);
+    el('path', { d: line, fill: 'none', stroke: 'url(#gMerge)', 'stroke-width': 2, 'stroke-linejoin': 'miter' }, svg);
+    plot.forEach((p, i) => {
+      const mix = plot.length > 1 ? i / (plot.length - 1) : 1;
+      const c = el('circle', { cx: X(p[0]).toFixed(1), cy: Y(p[1]).toFixed(1), r: 3.4,
+        fill: css('--panel'), stroke: mix < 0.5 ? col : col2, 'stroke-width': 2 }, svg);
       el('title', {}, c).textContent = hashStr(p[1]) + ' · ' + new Date(p[0]).toLocaleString();
     });
     const rej = plot.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y((Math.min(rmax, p[2]) / rmax) * gmax).toFixed(1)).join('');
@@ -989,9 +987,6 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   }
   document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
   document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.goto)));
-  document.querySelectorAll('#histChain .segb').forEach((b) => b.addEventListener('click', () => {
-    state.chain = b.dataset.algo; store.set('algo', state.chain); renderDashboard();
-  }));
   document.querySelectorAll('.range[data-range-for]').forEach((grp) => grp.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
     grp.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
     if (grp.dataset.rangeFor === 'perf') state.perfRange = b.dataset.range; else state.shareRange = b.dataset.range;

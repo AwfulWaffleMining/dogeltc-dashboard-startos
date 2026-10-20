@@ -59,7 +59,7 @@ This is the number to watch, because it moves. Blocks found will read zero for a
 
 **Earnings** — blocks found and coins earned, per chain, with the blocks themselves below. Found and matured are counted separately: every coinbase is locked for 100 confirmations.
 
-**The chain tabs on the hashrate chart** — Litecoin and Dogecoin show the same hashrate, because it is the same work. What differs is difficulty, reward, and odds.
+**Merged hashrate** — one figure, not one per chain. Every share is a single scrypt hash tested against both targets, so there is no Litecoin rate and Dogecoin rate to tell apart. What differs between the chains is difficulty, reward, and odds — never the hashrate.
 
 ## If something looks wrong
 
