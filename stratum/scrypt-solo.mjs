@@ -21,6 +21,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 import net from 'node:net';
+import http from 'node:http';
 import { createHash, scryptSync, randomBytes } from 'node:crypto';
 
 /* ── primitives (verified) ────────────────────────────────────────────────── */
@@ -266,6 +267,12 @@ const HASHES_PER_DIFF1 = 2 ** (256 - (240 + Number(SCRYPT_SHIFT) - 16));
  * single L9 can submit thousands of shares a second and a growing array would
  * be a memory leak with a plausible excuse. Fifteen buckets per worker, fixed.
  */
+/* Which chain the primary RPC points at. Named rather than inferred: this
+   server mines Dogecoin natively today and will mine Litecoin as the AuxPoW
+   parent once merge mining lands, and a dashboard reading accepted blocks has
+   to know which it is looking at. */
+const PRIMARY_CHAIN = process.env.CHAIN_NAME || 'litecoin';
+
 const BUCKET_MS = 60_000;
 const WINDOW_BUCKETS = Number(process.env.WINDOW_MINUTES || 15);
 
@@ -497,6 +504,14 @@ class StratumServer {
   constructor({ port = 3333, jobs }) {
     this.port = port; this.jobs = jobs; this.clients = new Set(); this.en1 = 0;
     this.meter = new ShareMeter();
+    /* Accepted blocks, newest last. `lastBlock` below keeps only the most
+       recent one, which is enough for a log line but not for a dashboard that
+       has to show what this rig has ever found. Bounded because this is a
+       solo miner: at the odds involved, a list that grew without limit would
+       still be short, but an unbounded array fed by a loop is how a
+       long-running process leaks. */
+    this.blocks = [];
+    this.startedAt = Date.now();
     /* Converged difficulty, remembered per worker name. A reconnecting miner
        otherwise restarts at VARDIFF.start and re-climbs through every step,
        flooding us on the way up — this run showed it plainly: the rig dropped
@@ -764,6 +779,18 @@ class StratumServer {
             address: this.jobs.payoutAddress,
             worker: client.worker,
           };
+          /* Recorded for the stats API. `chain` is carried explicitly rather
+             than inferred: once merge mining lands, an accepted parent block
+             and an accepted aux block arrive through different submit calls
+             and a dashboard must be able to tell them apart. */
+          this.blocks.push({
+            chain: PRIMARY_CHAIN,
+            height: job.height,
+            address: this.jobs.payoutAddress,
+            worker: client.worker,
+            foundAt: Date.now(),
+          });
+          if (this.blocks.length > 500) this.blocks.shift();
         } else {
           /* The SHARE was valid — it cleared the target we set. Only the BLOCK
              lost a race. Returning a share rejection here blames the miner for
@@ -1188,12 +1215,159 @@ async function selftest() {
 
 /* ── run ──────────────────────────────────────────────────────────────────── */
 
+/* ── stats API ────────────────────────────────────────────────────────────
+ *
+ * A read-only JSON snapshot for the dashboard. `node:http` is a builtin, so
+ * this keeps the zero-runtime-dependency property intact.
+ *
+ * Bound to loopback ONLY. It is an implementation detail between two
+ * processes in one container, never something a miner or a browser connects
+ * to, and it reports worker names and payout state — fine for the dashboard
+ * sitting beside it, not fine on a LAN.
+ *
+ * Everything here is derived from state the meter and server already keep.
+ * Nothing is computed specially for the API, so the numbers a dashboard shows
+ * and the numbers the periodic log line prints cannot drift apart. */
+function statsSnapshot(srv, now = Date.now()) {
+  const accounts = srv.meter.byAccount(now).map((a) => ({
+    account: a.account,
+    rigs: a.rigs,
+    accepted: a.accepted,
+    rejected: a.rejected,
+    /* Exact lifetime difficulty: the billable figure, and the one a lease is
+       priced from. Not an estimate. */
+    billableDiff: a.sumDiff,
+    meanDiff: a.meanDiff ?? 0,
+    /* null, never 0, until the sample supports a rate. A zero here would read
+       as "this rig is dead" when it means "we have 3 shares so far". */
+    hashrate: a.hs,
+    hashrateErr: a.err,
+    hashrateShort: a.shortHs,
+    hashrateShortErr: a.shortErr,
+    windowShares: a.winShares,
+    lastShareAt: a.lastShare,
+  }));
+
+  const workers = [];
+  for (const w of srv.meter.workers.values()) {
+    const win = ShareMeter.window(w, now);
+    workers.push({
+      worker: w.worker,
+      account: w.account,
+      rig: w.rig,
+      accepted: w.accepted,
+      rejected: w.rejected,
+      billableDiff: w.sumDiff,
+      hashrate: win.hs,
+      hashrateErr: win.err ?? null,
+      windowShares: win.shares,
+      lastShareAt: w.lastShare,
+      firstSeenAt: w.firstSeen,
+    });
+  }
+
+  /* Live connections, which is not the same as known workers: a worker that
+     has disconnected still has history worth showing. */
+  const connected = [];
+  for (const c of srv.clients) {
+    if (!c.authorized) continue;
+    connected.push({
+      worker: c.worker,
+      difficulty: c.difficulty,
+      staleBlocks: c.staleBlocks,
+    });
+  }
+
+  const job = srv.jobs?.current ?? null;
+
+  return {
+    ok: true,
+    now,
+    startedAt: srv.startedAt,
+    uptimeSeconds: Math.round((now - srv.startedAt) / 1000),
+    payoutMode: process.env.PAYOUT_MODE || 'unset',
+    primaryChain: PRIMARY_CHAIN,
+    scryptShift: Number(SCRYPT_SHIFT),
+    hashesPerDiff1: HASHES_PER_DIFF1,
+    windowMinutes: WINDOW_BUCKETS,
+    shortWindowMinutes: SHORT_BUCKETS,
+    job: job
+      ? { height: job.height, id: job.id, stale: !!job.stale }
+      : null,
+    accounts,
+    workers,
+    connected,
+    blocks: srv.blocks,
+  };
+}
+
+function startStatsApi(srv, port) {
+  if (!port) return null;
+  const server = http.createServer((req, res) => {
+    const send = (code, body) => {
+      const s = JSON.stringify(body);
+      res.writeHead(code, {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(s),
+        'cache-control': 'no-store',
+      });
+      res.end(s);
+    };
+    if (req.method !== 'GET') return send(405, { ok: false, error: 'GET only' });
+    const path = (req.url || '').split('?')[0];
+    if (path === '/health') return send(200, { ok: true });
+    if (path === '/stats') {
+      try {
+        return send(200, statsSnapshot(srv));
+      } catch (e) {
+        /* Never let a dashboard request take the stratum down. A miner losing
+           work because a stats call threw would be an absurd trade. */
+        return send(500, { ok: false, error: e.message });
+      }
+    }
+    return send(404, { ok: false, error: 'not found' });
+  });
+  server.listen(port, '127.0.0.1', () =>
+    log(`stats api on 127.0.0.1:${port}`));
+  return server;
+}
+
 async function run() {
   const addr = process.env.PAYOUT_ADDRESS;
-  if (!addr) throw new Error(
-    'set PAYOUT_ADDRESS — every block this server finds pays it, whatever\n'
-    + 'usernames the miners authorize with. On StartOS that is the node\n'
-    + "operator's own address; for AWM it is AWM's standard DOGE address.");
+
+  /* PAYOUT_MODE is how a package tells this server that the operator has
+     deliberately not chosen a destination yet, as distinct from having
+     forgotten to set one. Default it from whether an address is present, so
+     running this directly from a shell behaves exactly as it always has. */
+  const mode = process.env.PAYOUT_MODE
+    || (addr ? 'addresses' : 'unset');
+
+  if (mode === 'unset') {
+    /* Deliberately does NOT bind the stratum port.
+       A server that accepts miners and hands out work it cannot pay for is
+       worse than one that is plainly not running: the rig shows accepted
+       shares, the operator believes they are mining, and the truth only
+       surfaces when a block is found and there is nowhere to send it. Serve
+       the stats API so the dashboard can say what is missing, and nothing
+       else. */
+    const idle = {
+      startedAt: Date.now(),
+      clients: new Set(),
+      meter: new ShareMeter(),
+      blocks: [],
+      jobs: null,
+    };
+    const api = startStatsApi(idle, Number(process.env.STRATUM_API_PORT || 0));
+    log('no payout destination chosen — not accepting miners.');
+    log('choose one in the service settings; nothing is mined until then.');
+    if (!api) {
+      throw new Error(
+        'set PAYOUT_ADDRESS — every block this server finds pays it, whatever\n'
+        + 'usernames the miners authorize with. On StartOS that is the node\n'
+        + "operator's own address; for AWM it is AWM's standard DOGE address.");
+    }
+    return;
+  }
 
   const jobs = new JobManager(addr);          // throws now if addr is malformed
   await jobs.refresh();
@@ -1201,6 +1375,7 @@ async function run() {
 
   const srv = new StratumServer({ port: Number(process.env.STRATUM_PORT || 3333), jobs });
   await srv.start();
+  startStatsApi(srv, Number(process.env.STRATUM_API_PORT || 0));
   setInterval(async () => {
     try {
       const job = await jobs.refresh();
