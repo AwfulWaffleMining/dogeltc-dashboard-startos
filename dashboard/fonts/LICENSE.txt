@@ -1,0 +1,9 @@
+Copyright 2018 Bai Jamjuree (https://github.com/cadsondemak/Bai-Jamjuree)
+
+
+These fonts are licensed under the SIL Open Font License 1.1:
+  Bai Jamjuree - Copyright (c) Cadson Demak
+  Michroma - Copyright (c) Vernon Adams
+  JetBrains Mono - Copyright (c) JetBrains
+Full license text: https://openfontlicense.org
+Subset to Latin and punctuation, converted to woff2.

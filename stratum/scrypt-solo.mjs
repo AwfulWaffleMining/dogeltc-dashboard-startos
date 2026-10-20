@@ -1,0 +1,1234 @@
+#!/usr/bin/env node
+/* ═══════════════════════════════════════════════════════════════════════════
+   doge-stratum-server.mjs — solo Scrypt stratum server for Dogecoin Core
+
+   Built on primitives already proven against real consensus:
+     doge-block-builder.mjs    block construction accepted by the daemon
+     doge-consensus-gaps.mjs   multi-tx merkle, spendable rewards, addresses
+     doge-stratum-split.mjs    coinb1/coinb2 split and merkle branch folding
+
+   Solo only. No shares database, no payout accounting, no balances. The
+   miner's username IS the payout address: whoever finds the block is paid
+   directly by its coinbase. That is the whole point, and it is why this needs
+   no PostgreSQL.
+
+     --selftest   Starts the server, connects a synthetic miner, mines a real
+                  regtest block through the full stratum loop, requires the
+                  daemon to accept it, then exits.
+     (default)    Runs the server.
+
+   Env: RPC_HOST RPC_PORT RPC_USER RPC_PASS STRATUM_PORT COIN_NETWORK
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+import net from 'node:net';
+import { createHash, scryptSync, randomBytes } from 'node:crypto';
+
+/* ── primitives (verified) ────────────────────────────────────────────────── */
+
+const sha256 = (b) => createHash('sha256').update(b).digest();
+const sha256d = (b) => sha256(sha256(b));
+const rev = (b) => Buffer.from(b).reverse();
+const u32le = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; };
+const u64le = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
+
+function varint(n) {
+  if (n < 0xfd) return Buffer.from([n]);
+  if (n <= 0xffff) { const b = Buffer.alloc(3); b[0] = 0xfd; b.writeUInt16LE(n, 1); return b; }
+  if (n <= 0xffffffff) { const b = Buffer.alloc(5); b[0] = 0xfe; b.writeUInt32LE(n, 1); return b; }
+  const b = Buffer.alloc(9); b[0] = 0xff; b.writeBigUInt64LE(BigInt(n), 1); return b;
+}
+
+function scriptNum(n) {
+  if (n === 0) return Buffer.alloc(0);
+  let v = Math.abs(n); const out = [];
+  while (v) { out.push(v & 0xff); v = Math.floor(v / 256); }
+  if (out[out.length - 1] & 0x80) out.push(0x00);
+  return Buffer.from(out);
+}
+
+const pushData = (b) => b.length < 0x4c
+  ? Buffer.concat([Buffer.from([b.length]), b])
+  : Buffer.concat([Buffer.from([0x4c, b.length]), b]);
+
+const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+function addressToScript(addr) {
+  let num = 0n;
+  for (const ch of addr) {
+    const i = B58.indexOf(ch);
+    if (i < 0) throw new Error(`invalid base58 in address: ${addr}`);
+    num = num * 58n + BigInt(i);
+  }
+  let hex = num.toString(16); if (hex.length % 2) hex = '0' + hex;
+  let leading = 0; for (const ch of addr) { if (ch === '1') leading++; else break; }
+  const d = Buffer.concat([Buffer.alloc(leading), Buffer.from(hex, 'hex')]);
+  if (d.length !== 25) throw new Error(`bad address length for ${addr}`);
+  const body = d.subarray(0, 21);
+  if (!sha256d(body).subarray(0, 4).equals(d.subarray(21))) throw new Error(`bad checksum: ${addr}`);
+  return new Set([22, 196, 5]).has(body[0])
+    ? Buffer.concat([Buffer.from([0xa9, 0x14]), body.subarray(1), Buffer.from([0x87])])
+    : Buffer.concat([Buffer.from([0x76, 0xa9, 0x14]), body.subarray(1), Buffer.from([0x88, 0xac])]);
+}
+
+function splitCoinbase({ height, value, script, en1Size, en2Size, tail }) {
+  const payload = Buffer.concat([Buffer.alloc(en1Size + en2Size), tail]);
+  const scriptSig = Buffer.concat([pushData(scriptNum(height)), pushData(payload)]);
+  if (scriptSig.length > 100) throw new Error(`coinbase scriptSig ${scriptSig.length} > 100`);
+  const full = Buffer.concat([
+    u32le(1), varint(1), Buffer.alloc(32), Buffer.from('ffffffff', 'hex'),
+    varint(scriptSig.length), scriptSig, Buffer.from('ffffffff', 'hex'),
+    varint(1), u64le(value), varint(script.length), script, u32le(0),
+  ]);
+  const at = 4 + 1 + 32 + 4 + varint(scriptSig.length).length
+    + pushData(scriptNum(height)).length + (payload.length < 0x4c ? 1 : 2);
+  return { coinb1: full.subarray(0, at), coinb2: full.subarray(at + en1Size + en2Size) };
+}
+
+function merkleBranch(otherTxids) {
+  const branch = []; let layer = otherTxids.map(Buffer.from);
+  while (layer.length > 0) {
+    branch.push(layer[0]);
+    const next = [];
+    for (let i = 1; i < layer.length; i += 2)
+      next.push(sha256d(Buffer.concat([layer[i], i + 1 < layer.length ? layer[i + 1] : layer[i]])));
+    layer = next;
+  }
+  return branch;
+}
+
+const foldBranch = (cbTxid, branch) =>
+  branch.reduce((root, sib) => sha256d(Buffer.concat([root, sib])), Buffer.from(cbTxid));
+
+const scryptPoW = (h) => scryptSync(h, h, 32, { N: 1024, r: 1, p: 1, maxmem: 262144 });
+
+function targetFromBits(bitsHex) {
+  const bits = parseInt(bitsHex, 16);
+  const exp = bits >>> 24, mant = BigInt(bits & 0x007fffff);
+  return exp <= 3 ? mant >> BigInt(8 * (3 - exp)) : mant << BigInt(8 * (exp - 3));
+}
+
+const hashToBig = (h) => BigInt('0x' + rev(h).toString('hex'));
+
+/* Scrypt difficulty-1 target. Share target = this / difficulty.
+ *
+ * NOT Bitcoin's. Bitcoin's difficulty-1 target is 0xffff << 208, which costs
+ * 2^32 hashes per share. Scrypt pools shift that left by another 16 bits, so a
+ * difficulty-1 Scrypt share costs 2^16 hashes. Using the Bitcoin value here
+ * makes every assigned difficulty 65536x too hard, which on mainnet rejects
+ * essentially every honest share as "low difficulty" — regtest hid it entirely,
+ * because the either-target fallback let the shares through anyway.
+ *
+ * The arbiter was the hardware: a VolcMiner asks its other pool for d=1098633.
+ * At ~2.3 GH/s that is 31 s/share under the 2^16 convention and 24 DAYS under
+ * 2^32. Override only if a chain is found to disagree. */
+const SCRYPT_SHIFT = BigInt(process.env.SCRYPT_DIFF_SHIFT || 16);
+const DIFF1 = (0x0000ffffn << 208n) << SCRYPT_SHIFT;
+const targetForDifficulty = (d) => DIFF1 / BigInt(Math.max(1, Math.floor(d)));
+
+/**
+ * THE ONE FIELD REGTEST CANNOT VALIDATE.
+ *
+ * mining.notify sends prevhash with each 4-byte word reversed. Implementations
+ * have historically disagreed about this, and a test miner written alongside
+ * this function would share any misunderstanding it contains — a self-consistent
+ * bug passes its own test. Only real mining firmware settles it.
+ *
+ * Isolated here deliberately: if an ASIC rejects jobs, this is the first and
+ * probably only thing to change.
+ */
+function prevhashToStratum(displayHex) {
+  const internal = rev(Buffer.from(displayHex, 'hex'));   // display -> internal
+  const out = Buffer.alloc(32);
+  for (let i = 0; i < 8; i++) rev(internal.subarray(i * 4, i * 4 + 4)).copy(out, i * 4);
+  return out.toString('hex');
+}
+
+/* ── RPC ──────────────────────────────────────────────────────────────────── */
+
+const cfg = {
+  host: process.env.RPC_HOST || '127.0.0.1',
+  port: process.env.RPC_PORT || '18332',
+  user: process.env.RPC_USER || 'regtest',
+  pass: process.env.RPC_PASS || 'regtest',
+};
+
+async function rpc(method, params = []) {
+  const res = await fetch(`http://${cfg.host}:${cfg.port}/`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: 'Basic ' + Buffer.from(`${cfg.user}:${cfg.pass}`).toString('base64'),
+    },
+    body: JSON.stringify({ jsonrpc: '1.0', id: 'stratum', method, params }),
+  });
+  const j = JSON.parse(await res.text());
+  if (j.error) throw new Error(`${method}: ${JSON.stringify(j.error)}`);
+  return j.result;
+}
+
+/* ── vardiff ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Difficulty 1 is correct for a CPU and absurd for an ASIC: a 2 GH/s Scrypt
+ * miner clears it twice a second, which floods the server, the daemon and the
+ * log while measuring nothing better than a higher difficulty would.
+ *
+ * Aim for a fixed SECONDS-PER-SHARE instead, and let each client's difficulty
+ * follow its own hashrate. Nothing about consensus changes: share difficulty
+ * is a server-side accounting floor, and a solution that clears the NETWORK
+ * target is still a block at any share difficulty (see onSubmit).
+ */
+const pow2 = (x) => 2 ** Math.max(0, Math.round(Math.log2(Math.max(x, 1e-9))));
+
+const VARDIFF = {
+  target:    Number(process.env.VARDIFF_TARGET   || 15),      // seconds per share
+  retarget:  Number(process.env.VARDIFF_RETARGET || 60),      // seconds between moves
+  minShares: 20,                                             // or this many shares, whichever first
+  min:       Number(process.env.VARDIFF_MIN      || 1),
+  /* A 2.3 GH/s rig at 15 s/share needs ~524288. A ceiling of 2^20 would have
+     capped a modest fleet; 2^28 leaves room without being unbounded. */
+  max:       Number(process.env.VARDIFF_MAX      || 2 ** 28),
+  start:     Number(process.env.VARDIFF_START    || 4096),
+  maxStep:   8,                                              // never move more than 8x at once
+  tolerance: 0.3,                                            // ignore deviations under 30%
+};
+
+/**
+ * Pure. Next difficulty from shares observed in a window.
+ * Separated from the server so convergence can be simulated without sockets.
+ */
+function nextDifficulty(cur, shares, secs, v = VARDIFF) {
+  if (secs <= 0) return cur;
+
+  /* Zero shares measures nothing — a rate of 0 would demand difficulty 0.
+     Step down GENTLY (2x, not maxStep) and look again. A full 8x cut on an
+     empty window is destructive: at difficulty 1048576 and 2.23 GH/s the
+     expected interval is 30.8s, so one empty 60s window arrives by chance 14%
+     of the time, and a healthy rig was dropped to 131072 and made to climb
+     back through every step. vardiffPass also holds this branch back until the
+     window is long enough that an empty one is genuinely improbable. */
+  if (shares === 0) return Math.max(v.min, pow2(cur / 2));
+
+  const ratio = (shares / secs) / (1 / v.target);   // >1 means too many shares
+  if (Math.abs(ratio - 1) < v.tolerance) return cur;
+
+  /* Damped: move by the square root of the indicated factor. An estimate from
+     a handful of shares carries tens of percent of error, and applying it
+     undamped overshoots — this run settled on 1048576 when the ideal for 2.23
+     GH/s is 524288, then oscillated. Converging in a few more steps is cheaper
+     than ringing around the answer. */
+  let next = cur * Math.sqrt(ratio);
+  next = Math.min(next, cur * v.maxStep);
+  next = Math.max(next, cur / v.maxStep);
+
+  /* Damping and power-of-two rounding can cancel each other out: at 2097152
+     against an ideal of 4194304 the damped target is 2768840, which pow2
+     rounds straight back to 2097152 — no movement, forever, one notch short.
+     When the direction is clear and outside tolerance, guarantee at least one
+     step so convergence cannot stall. */
+  let out = pow2(next);
+  if (out === cur) out = ratio > 1 ? cur * 2 : cur / 2;
+  return Math.min(v.max, Math.max(v.min, pow2(out)));
+}
+
+/* ── metering ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Per-worker share accounting.
+ *
+ * This is the renting primitive, and it is deliberately separate from payouts.
+ * A renter's question is not "who got paid" but "did my hashrate arrive and get
+ * used" — which is answerable from accepted shares and their difficulty alone,
+ * with no fee structure settled.
+ *
+ * Hashrate is an ESTIMATE from a Poisson process: at difficulty d a share costs
+ * d * 2^32 scrypt hashes on average, so the rate is the share difficulty summed
+ * over a window divided by its length. Over a few minutes at difficulty 1 it is
+ * noisy by tens of percent, and it is not evidence of anything over seconds.
+ * Lease metering should bill the accumulated share total, which is exact, and
+ * show the rate only as a live readout.
+ */
+/* Must track DIFF1 exactly: hashes per difficulty-1 share = 2^256 / DIFF1.
+   Hard-coding 2^32 here while DIFF1 says otherwise is how a hashrate figure
+   ends up wrong by four orders of magnitude. */
+const HASHES_PER_DIFF1 = 2 ** (256 - (240 + Number(SCRYPT_SHIFT) - 16));
+
+/* Two quantities, deliberately kept apart:
+ *
+ *   sumDiff  — lifetime, exact, monotonic. What a lease bills against. No
+ *              estimation is involved; it is a count of work proven.
+ *   rolling  — per-minute buckets over a short window. Answers "is it working
+ *              NOW", which a lifetime average cannot: firstSeen never moves,
+ *              so a rig that dies six hours into a lease keeps reporting a
+ *              healthy average forever.
+ *
+ * Buckets rather than a list of share timestamps, because at difficulty 1 a
+ * single L9 can submit thousands of shares a second and a growing array would
+ * be a memory leak with a plausible excuse. Fifteen buckets per worker, fixed.
+ */
+const BUCKET_MS = 60_000;
+const WINDOW_BUCKETS = Number(process.env.WINDOW_MINUTES || 15);
+
+/* A second, shorter window. The 15-minute figure is billing-grade but lags
+   badly: over a 14-minute run it still reported the whole-run average, 1.36
+   GH/s, while the steady-state rate was 1.59. A renter asking "is it working
+   now" needs the short number; an operator reconciling a lease needs the long
+   one. Real pool dashboards show both for exactly this reason. */
+/* Five minutes, not three. At a converged difficulty targeting 15s/share a
+   3-minute window holds 5-12 shares, which straddles the gate and makes the
+   readout flicker between a number and "warming" every 30 seconds. Five
+   minutes holds ~20, comfortably clear, and still reacts far faster than the
+   long window — which over a 17-minute run read 1.74 GH/s while the rig was
+   doing 2.4. */
+const SHORT_BUCKETS = Number(process.env.SHORT_WINDOW_MINUTES || 5);
+const MIN_SHARES_SHORT = 8;    // +/-35%: coarse, but it is a liveness readout
+
+/* Below this many shares in the window, publish no rate at all.
+ * Relative standard error on a Poisson count is 1/sqrt(n): +/-100% at 1 share,
+ * +/-22% at 20, +/-10% at 100. Showing "7.82 GH/s" off one share is not a
+ * rounding problem, it is a fabricated number, and a renter cannot tell. */
+const MIN_SHARES_FOR_RATE = 20;
+
+class ShareMeter {
+  constructor() { this.workers = new Map(); }
+
+  /* `now` is threaded through every method rather than read from the clock
+   * inside them, so the window logic is testable. Reading Date.now() here
+   * while record() took an injected time let firstSeen sit AFTER the shares
+   * being measured, which silently produced a negative span — and a negative
+   * span fails the rate gate, so the symptom was a rate that never appeared
+   * rather than a visibly wrong number. */
+  touch(client, now = Date.now()) {
+    const k = client.worker;
+    if (!this.workers.has(k)) {
+      this.workers.set(k, {
+        worker: k, account: client.account, rig: client.rig,
+        accepted: 0, rejected: 0, sumDiff: 0,
+        firstSeen: now, lastShare: null,
+        buckets: new Map(),   // minute index -> { diff, n }
+      });
+    }
+    return this.workers.get(k);
+  }
+
+  /* `diff` is the difficulty the share is CREDITED at. See onSubmit: during a
+     grace window this is decided per share by what the share ACHIEVED, not by
+     the easier of the two settings — crediting everything at the old, easier
+     figure undercounts by the whole retarget step (8x) for the entire window. */
+  record(client, ok, now = Date.now(), diff = client.difficulty) {
+    const w = this.touch(client, now);
+    if (!ok) { w.rejected++; return; }
+
+    w.accepted++; w.sumDiff += diff; w.lastShare = now;
+
+    const b = Math.floor(now / BUCKET_MS);
+    const cur = w.buckets.get(b) || { diff: 0, n: 0 };
+    cur.diff += diff; cur.n += 1;
+    w.buckets.set(b, cur);
+    for (const k of w.buckets.keys()) if (k <= b - WINDOW_BUCKETS) w.buckets.delete(k);
+  }
+
+  /** Rolling rate for one worker. Returns shares === 0 .. MIN-1 with hs null. */
+  static window(w, now = Date.now()) {
+    const b = Math.floor(now / BUCKET_MS);
+    let diff = 0, n = 0;
+    for (const [k, v] of w.buckets) if (k > b - WINDOW_BUCKETS) { diff += v.diff; n += v.n; }
+
+    // Span: from whichever is later — the window's edge or when we first saw
+    // this worker — so a rig 10s old is not divided by 15 minutes.
+    const edge = (b - WINDOW_BUCKETS + 1) * BUCKET_MS;
+    const secs = (now - Math.max(edge, w.firstSeen)) / 1000;
+    if (n < MIN_SHARES_FOR_RATE || secs <= 0) return { hs: null, shares: n, secs };
+    return { hs: (diff * HASHES_PER_DIFF1) / secs, shares: n, secs, err: 1 / Math.sqrt(n) };
+  }
+
+  /* Rolled up per account, because that is the unit a lease is sold in.
+   * Rolling share counts are summed across the account's rigs BEFORE the
+   * confidence gate, so a fleet of slow rigs qualifies for a rate even while
+   * no single rig does. */
+  byAccount(now = Date.now()) {
+    const out = new Map();
+    for (const w of this.workers.values()) {
+      const a = out.get(w.account) || {
+        account: w.account, rigs: 0, accepted: 0, rejected: 0, sumDiff: 0,
+        firstSeen: w.firstSeen, lastShare: null, winDiff: 0, winShares: 0, winSecs: 0,
+        shortDiff: 0, shortShares: 0, accepted: 0,
+      };
+      a.rigs++; a.accepted += w.accepted; a.rejected += w.rejected; a.sumDiff += w.sumDiff;
+      a.meanDiff = a.accepted > 0 ? a.sumDiff / a.accepted : 0;
+      a.firstSeen = Math.min(a.firstSeen, w.firstSeen);
+      a.lastShare = Math.max(a.lastShare || 0, w.lastShare || 0) || null;
+
+      const b = Math.floor(now / BUCKET_MS);
+      for (const [k, v] of w.buckets) {
+        if (k > b - WINDOW_BUCKETS) { a.winDiff += v.diff; a.winShares += v.n; }
+        if (k > b - SHORT_BUCKETS)  { a.shortDiff += v.diff; a.shortShares += v.n; }
+      }
+      const edge = (b - WINDOW_BUCKETS + 1) * BUCKET_MS;
+      a.winSecs = Math.max(a.winSecs, (now - Math.max(edge, a.firstSeen)) / 1000);
+
+      out.set(w.account, a);
+    }
+    for (const a of out.values()) {
+      a.hs = (a.winShares >= MIN_SHARES_FOR_RATE && a.winSecs > 0)
+        ? (a.winDiff * HASHES_PER_DIFF1) / a.winSecs : null;
+      a.err = a.winShares > 0 ? 1 / Math.sqrt(a.winShares) : null;
+
+      const shortSecs = Math.min(a.winSecs, SHORT_BUCKETS * BUCKET_MS / 1000);
+      a.shortHs = (a.shortShares >= MIN_SHARES_SHORT && shortSecs > 0)
+        ? (a.shortDiff * HASHES_PER_DIFF1) / shortSecs : null;
+      a.shortErr = a.shortShares > 0 ? 1 / Math.sqrt(a.shortShares) : null;
+    }
+    return [...out.values()];
+  }
+
+  static human(hs) {
+    const u = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'];
+    let i = 0; while (hs >= 1000 && i < u.length - 1) { hs /= 1000; i++; }
+    return `${hs.toFixed(hs < 10 ? 2 : 1)} ${u[i]}`;
+  }
+
+  report(now = Date.now()) {
+    const rows = this.byAccount(now);
+    if (rows.length === 0) return 'no workers yet';
+    const lines = rows.map((a) => {
+      /* No rate until the sample supports one. "warming up" is the honest
+         reading of 3 shares; a number there would be invention. */
+      const fmt = (hs, err, shares, gate) => hs === null
+        ? `warming ${shares}/${gate}`.padStart(18)
+        : `${ShareMeter.human(hs)} ±${Math.round(err * 100)}%`.padStart(18);
+      const idle = a.lastShare ? `${Math.round((now - a.lastShare) / 1000)}s ago` : 'never';
+      /* `acc` is directly comparable to the miner's own "Accepted" counter, and
+         `avgdiff` is what turns one into the other: hashrate = acc * avgdiff *
+         2^16 / elapsed. Printing all three means a miner-vs-server
+         disagreement can be read off rather than reconstructed. */
+      return `    ${a.account.padEnd(16)} rigs ${String(a.rigs).padStart(3)}`
+           + `  acc ${String(a.accepted).padStart(5)}`
+           + `  avgdiff ${String(Math.round(a.meanDiff || 0)).padStart(8)}`
+           + `  billable ${String(a.sumDiff).padStart(9)}`
+           + `  rej ${String(a.rejected).padStart(3)}`
+           + `  now ${fmt(a.shortHs, a.shortErr, a.shortShares, MIN_SHARES_SHORT)}`
+           + `  ${WINDOW_BUCKETS}m ${fmt(a.hs, a.err, a.winShares, MIN_SHARES_FOR_RATE)}`
+           + `  last ${idle}`;
+    });
+    return `by account — billable is exact lifetime difficulty; "now" is a`
+         + ` ${SHORT_BUCKETS}-min estimate, "${WINDOW_BUCKETS}m" the longer average`
+         + `\n${lines.join('\n')}`;
+  }
+}
+
+/* ── jobs ─────────────────────────────────────────────────────────────────── */
+
+const EN1_SIZE = 4, EN2_SIZE = 4;
+const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+
+class JobManager {
+  /* The payout address lives here, resolved once.
+   *
+   * There is exactly one of them per server — see mining.authorize — so taking
+   * it in the constructor means a malformed address throws at startup instead
+   * of yielding blocks that pay nobody, and no call site can hand refresh() a
+   * script that disagrees with the address being reported in the logs. */
+  constructor(payoutAddress) {
+    this.jobs = new Map(); this.current = null; this.seq = 0;
+    this.payoutAddress = payoutAddress;
+    this.payoutScript = addressToScript(payoutAddress);
+  }
+
+  async refresh() {
+    const payoutScript = this.payoutScript;
+    const t = await rpc('getblocktemplate', [{ rules: [] }]);
+    if (this.current && this.current.prevhash === t.previousblockhash
+        && this.current.txCount === (t.transactions || []).length) return null;
+
+    /* Only a MOVED TIP orphans the previous jobs. A template that merely picked
+     * up new transactions still builds on the same prevhash, so blocks found
+     * against the old job remain perfectly valid and must stay submittable —
+     * marking those stale would throw away real blocks. */
+    const tipMoved = this.current !== null && this.current.prevhash !== t.previousblockhash;
+    if (tipMoved) for (const j of this.jobs.values()) j.stale = true;
+
+    const txs = t.transactions || [];
+    const { coinb1, coinb2 } = splitCoinbase({
+      height: t.height, value: t.coinbasevalue, script: payoutScript,
+      en1Size: EN1_SIZE, en2Size: EN2_SIZE, tail: Buffer.from('/awm-solo/'),
+    });
+    const others = txs.map((x) => rev(Buffer.from(x.txid || x.hash, 'hex')));
+
+    const job = {
+      id: (++this.seq).toString(16).padStart(8, '0'),
+      height: t.height, prevhash: t.previousblockhash,
+      coinb1, coinb2, branch: merkleBranch(others), others,
+      version: t.version, bits: t.bits, curtime: t.curtime,
+      target: targetFromBits(t.bits), txs, txCount: txs.length,
+      payoutScript, stale: false,
+      /* Whether the PREVIOUS work became invalid. This is what clean_jobs on
+         mining.notify means, and the two cases are not the same: a moved tip
+         invalidates work in progress, a template that merely picked up new
+         transactions does not. */
+      tipMoved,
+    };
+    this.jobs.set(job.id, job);
+    // Keep a short history so late shares on the previous job still validate.
+    if (this.jobs.size > 8) this.jobs.delete(this.jobs.keys().next().value);
+    this.current = job;
+    log(`job ${job.id} height ${job.height} txs ${job.txCount} branch ${job.branch.length}`);
+    return job;
+  }
+
+  notifyParams(job, clean) {
+    return [
+      job.id,
+      prevhashToStratum(job.prevhash),
+      job.coinb1.toString('hex'),
+      job.coinb2.toString('hex'),
+      job.branch.map((b) => b.toString('hex')),
+      (job.version >>> 0).toString(16).padStart(8, '0'),
+      job.bits,
+      job.curtime.toString(16).padStart(8, '0'),
+      clean,
+    ];
+  }
+}
+
+/* ── server ───────────────────────────────────────────────────────────────── */
+
+class StratumServer {
+  constructor({ port = 3333, jobs }) {
+    this.port = port; this.jobs = jobs; this.clients = new Set(); this.en1 = 0;
+    this.meter = new ShareMeter();
+    /* Converged difficulty, remembered per worker name. A reconnecting miner
+       otherwise restarts at VARDIFF.start and re-climbs through every step,
+       flooding us on the way up — this run showed it plainly: the rig dropped
+       at 19:36:01 having reached 1048576 and began again at 4096. Miners
+       reconnect constantly in production (blips, pool failover), so without
+       this the climb is the normal case rather than the exception. */
+    this.lastDifficulty = new Map();
+  }
+
+  start() {
+    this.server = net.createServer((sock) => this.onConnect(sock));
+    return new Promise((r) => this.server.listen(this.port, () => {
+      log(`stratum listening on ${this.server.address().port}`); r(this.server.address().port);
+    }));
+  }
+
+  stop() { for (const c of this.clients) c.sock.destroy(); return new Promise((r) => this.server.close(r)); }
+
+  onConnect(sock) {
+    const client = {
+      sock, id: randomBytes(4).toString('hex'),
+      en1: Buffer.alloc(4), difficulty: VARDIFF.start, authorized: false, buf: '',
+      worker: null, account: null, rig: null, subscribed: false,
+      vdSince: Date.now(), vdShares: 0,     // vardiff measurement window
+      prevDiff: null, prevDiffUntil: 0,     // grace for work in flight at the old difficulty
+      staleBlocks: 0,
+    };
+    /* Random, not sequential: a counter resets to 1 whenever the server
+       restarts, so a reconnecting miner would be handed the same extranonce1
+       it already searched — duplicating its own work. Real pools randomise. */
+    client.en1 = randomBytes(4);
+    this.en1++;
+    this.clients.add(client);
+    /* Deliberately silent until subscribe. Firmware probes its configured pool
+       slots on a timer, opening and closing sockets that never speak stratum;
+       logging those buries the connections that matter. Counted, not printed. */
+    this.probes = this.probes || 0;
+
+    sock.setNoDelay(true);
+    sock.on('data', (d) => {
+      client.buf += d.toString('utf8');
+      let i;
+      while ((i = client.buf.indexOf('\n')) >= 0) {
+        const line = client.buf.slice(0, i).trim();
+        client.buf = client.buf.slice(i + 1);
+        if (line) this.onMessage(client, line).catch((e) => log(`! ${client.id}: ${e.message}`));
+      }
+    });
+    sock.on('error', (e) => log(`! ${client.id} socket: ${e.message}`));
+    sock.on('close', () => {
+      this.clients.delete(client);
+      if (client.subscribed) log(`- client ${client.id}`
+          + (client.worker ? ` ("${client.worker}")` : '')
+          + (client.staleBlocks ? ` — ${client.staleBlocks} stale` : ''));
+      else if (++this.probes % 20 === 0) log(`(${this.probes} probe connections ignored)`);
+    });
+  }
+
+  send(client, obj) {
+    if (!client.sock.destroyed) client.sock.write(JSON.stringify(obj) + '\n');
+  }
+
+  async onMessage(client, line) {
+    let msg; try { msg = JSON.parse(line); } catch { return; }
+    const { id, method, params = [] } = msg;
+
+    switch (method) {
+      case 'mining.subscribe': {
+        const sid = client.id;
+        this.send(client, {
+          id, error: null,
+          result: [[['mining.set_difficulty', sid], ['mining.notify', sid]],
+                   client.en1.toString('hex'), EN2_SIZE],
+        });
+        client.subscribed = true;
+        log(`+ ${client.id} from ${client.sock.remoteAddress} `
+            + `subscribe (${params[0] || 'unknown miner'})`);
+        break;
+      }
+
+      case 'mining.authorize': {
+        /* The username is a WORKER NAME, not a payout address.
+         *
+         * Both deployments pay a single operator-configured address: on StartOS
+         * the installer sets their own, and in AWM the coinbase pays AWM's
+         * address while the miner relationship settles in USDC on Base. Public
+         * solo pools do it the other way round, and copying them here would
+         * reject every real worker name — AWM's own convention looks like
+         * awm_00001.avalonmini3_001, which is not base58 and never will be.
+         *
+         * So accept any username, keep it for logging and per-worker stats,
+         * and never let it influence where money goes. */
+        client.worker = String(params[0] || 'anonymous');
+
+        /* Stratum's "account.rig" convention maps onto the lease model with no
+         * extra protocol: the part before the dot identifies who is renting,
+         * the part after identifies which box. Metering therefore rolls up per
+         * renter without the miner having to send anything bespoke. */
+        const dot = client.worker.indexOf('.');
+        client.account = dot === -1 ? client.worker : client.worker.slice(0, dot);
+        client.rig = dot === -1 ? '' : client.worker.slice(dot + 1);
+
+        /* Honour a `d=N` difficulty request in the password field. This is the
+         * de-facto convention across Scrypt pools, and this hardware already
+         * sends it unprompted (observed: "d=1098633_lock=3"). Taking it as the
+         * STARTING difficulty skips vardiff's climb entirely for a miner that
+         * already knows its own rate; vardiff still corrects from there, so a
+         * stale or optimistic value self-heals rather than sticking. */
+        const pass = String(params[1] || '');
+        const dReq = /(?:^|[_,;&])d=(\d+(?:\.\d+)?)/.exec(pass);
+        if (dReq) {
+          const asked = Number(dReq[1]);
+          const used = Math.min(VARDIFF.max, Math.max(VARDIFF.min, pow2(asked)));
+          log(`  ${client.id} requested difficulty ${asked} via password -> using ${used}`
+              + (used !== asked ? ` (clamped to [${VARDIFF.min}, ${VARDIFF.max}] and rounded to a power of two)` : ''));
+          client.difficulty = used;
+        }
+
+        /* Resume where this worker left off, unless it asked for a specific
+           difficulty via d= (an explicit request wins over our memory). */
+        if (!dReq && this.lastDifficulty.has(client.worker)) {
+          const resumed = this.lastDifficulty.get(client.worker);
+          if (resumed !== client.difficulty) {
+            log(`  ${client.id} resuming difficulty ${resumed} for "${client.worker}"`
+                + ` (was ${client.difficulty})`);
+            client.difficulty = resumed;
+          }
+        }
+
+        client.authorized = true;
+        client.vdSince = Date.now(); client.vdShares = 0;
+        this.meter.touch(client);
+        this.send(client, { id, error: null, result: true });
+        log(`  ${client.id} authorized worker "${client.worker}"`
+            + ` (account ${client.account}${client.rig ? `, rig ${client.rig}` : ''})`);
+        this.send(client, { id: null, method: 'mining.set_difficulty', params: [client.difficulty] });
+        const job = this.jobs.current;
+        if (job) this.send(client, { id: null, method: 'mining.notify', params: this.jobs.notifyParams(job, true) });
+        break;
+      }
+
+      case 'mining.submit': {
+        const [, jobId, en2hex, ntimeHex, nonceHex] = params;
+        const r = await this.onSubmit(client, jobId, en2hex, ntimeHex, nonceHex);
+        if (client.authorized) this.meter.record(client, r.ok, Date.now(), r.diff ?? client.difficulty);
+        this.send(client, r.ok
+          ? { id, error: null, result: true }
+          : { id, error: [r.code || 23, r.reason, null], result: false });
+        break;
+      }
+
+      default:
+        this.send(client, { id, error: null, result: true });
+    }
+  }
+
+  async onSubmit(client, jobId, en2hex, ntimeHex, nonceHex) {
+    const job = this.jobs.jobs.get(jobId);
+    if (!job) return { ok: false, code: 21, reason: 'job not found' };
+    if (!client.authorized) return { ok: false, code: 24, reason: 'not authorized' };
+
+    const en2 = Buffer.from(en2hex, 'hex');
+    if (en2.length !== EN2_SIZE) return { ok: false, reason: 'bad extranonce2 size' };
+
+    const coinbase = Buffer.concat([job.coinb1, client.en1, en2, job.coinb2]);
+    const merkle = foldBranch(sha256d(coinbase), job.branch);
+    const header = Buffer.concat([
+      u32le(job.version), rev(Buffer.from(job.prevhash, 'hex')), merkle,
+      u32le(parseInt(ntimeHex, 16)), rev(Buffer.from(job.bits, 'hex')),
+      u32le(parseInt(nonceHex, 16)),
+    ]);
+
+    const hash = hashToBig(scryptPoW(header));
+
+    /* A share that would make a VALID BLOCK must never be rejected for being
+       too easy. On regtest, and on testnet whenever the min-difficulty rule
+       fires, the network target is easier than difficulty 1 — so a share can
+       clear the chain while failing the configured share floor. Accept if it
+       clears either. Larger target means easier. */
+    /* Vardiff grace: work handed out before a retarget was solved against the
+       OLD difficulty, and that miner cannot be blamed for our timing. Validate
+       against whichever of the two is easier (lower number = easier) for a
+       short window, and credit the share at that same figure. */
+    const graceOn = client.prevDiff !== null && Date.now() < client.prevDiffUntil;
+    const effDiff = graceOn ? Math.min(client.difficulty, client.prevDiff) : client.difficulty;
+
+    const shareTarget = targetForDifficulty(effDiff);
+    if (hash > shareTarget && hash > job.target)
+      return { ok: false, code: 23, reason: 'low difficulty share' };
+
+    client.vdShares++;
+
+    /* What difficulty did this share actually achieve? Answers from data, not
+       speculation, whether the miner is working to our set_difficulty or to
+       the job's nbits — which on regtest is trivially easy and would make the
+       share rate meaningless. Scaled integer division keeps BigInt precision. */
+    const achieved = Number((DIFF1 * 1000000n) / hash) / 1000000;
+
+    /* ACCEPTANCE uses the easier of the two difficulties, so a retarget never
+       punishes work already in flight. CREDIT is decided per share by what it
+       actually achieved: a share that clears the NEW difficulty is worth the
+       new difficulty, and only one that falls short of it gets the old figure.
+       Crediting every share at the grace floor undercounted the hashrate by
+       the full step size for the whole 60-second window. */
+    const credit = achieved >= client.difficulty ? client.difficulty : effDiff;
+    client.achMax = Math.max(client.achMax || 0, achieved);
+    client.achSum = (client.achSum || 0) + achieved;
+
+    /* Snapshot BEFORE the retarget below, which mutates client.difficulty.
+       Reading it afterwards mixed pre- and post-retarget state in one line and
+       produced output that contradicted itself: "achieved 22728 vs 32768
+       assigned, credited 4096" described a share that was assigned 4096, met
+       it, and was paid for it — the 32768 had leaked in from the retarget that
+       had just happened. */
+    const assigned = client.difficulty;
+    const shouldLog = client.vdShares <= 3 || client.vdShares % 100 === 0;
+
+    /* Bound the burst. Fast hardware at a too-low difficulty can submit tens
+       of thousands of shares per second; waiting for the 5-second vardiff timer
+       would mean six figures of submissions before the first correction. */
+    if (client.vdShares >= VARDIFF.minShares) this.retarget(client);
+
+    if (shouldLog)
+      log(`  ${client.id} share achieved ${achieved.toFixed(1)}`
+          + ` vs ${assigned} assigned, credited ${credit}`
+          + ` (ratio 2^${(Math.log2(Math.max(achieved, 1e-12) / assigned)).toFixed(1)}`
+          + `${graceOn ? `, grace floor ${effDiff}` : ''})`);
+
+    if (hash <= job.target) {
+      /* A solution against a job whose tip has already moved is an orphan by
+         construction — it builds on a block that is no longer the tip, so the
+         daemon will answer "inconclusive" every time. Don't spend the RPC.
+         The share still counts: the miner did this work before it could have
+         known, and refusing to credit it would penalise our own latency. */
+      if (job.stale) {
+        client.staleBlocks += 1;
+        if (client.staleBlocks === 1 || client.staleBlocks % 50 === 0)
+          log(`  (stale solution on job ${job.id} h${job.height}, not submitted`
+              + ` — ${client.staleBlocks} so far; work is arriving late)`);
+        return { ok: true, diff: credit };
+      }
+      log(`  *** ${client.id} BLOCK at height ${job.height} ***`);
+      const block = Buffer.concat([
+        header, varint(1 + job.txs.length), coinbase,
+        ...job.txs.map((t) => Buffer.from(t.data, 'hex')),
+      ]);
+      try {
+        const res = await rpc('submitblock', [block.toString('hex')]);
+        if (res === null) {
+          /* We just moved the tip ourselves, so every outstanding job is
+             orphan-producing as of NOW. Waiting for the next getblocktemplate
+             poll to notice leaves a window — up to the full refresh interval —
+             in which the miner keeps solving the old prevhash and we keep
+             spending submitblock calls on guaranteed orphans. That window is
+             exactly where the "inconclusive" flood lives. */
+          for (const j of this.jobs.jobs.values()) j.stale = true;
+
+          /* Report the address the coinbase actually pays, and credit the
+             worker separately. Naming the worker here as the payee would be a
+             lie that only surfaces when someone goes looking for coins. */
+          log(`  *** ACCEPTED — height ${job.height} -> ${this.jobs.payoutAddress}`
+              + ` (found by "${client.worker}") ***`);
+          this.lastBlock = {
+            height: job.height,
+            address: this.jobs.payoutAddress,
+            worker: client.worker,
+          };
+        } else {
+          /* The SHARE was valid — it cleared the target we set. Only the BLOCK
+             lost a race. Returning a share rejection here blames the miner for
+             our latency, and firmware counts rejects to decide a pool is
+             broken: five of these in a row is what made this miner fail over
+             and reconnect every 15 seconds. Log the block, accept the share. */
+          log(`  !!! block not accepted (${res}) — share still credited`);
+        }
+      } catch (e) { log(`  !!! submitblock failed: ${e.message}`); }
+    }
+    return { ok: true, diff: credit };
+  }
+
+  /* Apply a new share difficulty and immediately push clean work, so the
+     setting takes effect on the next piece of work rather than whenever the
+     miner happens to ask. The old difficulty stays valid during the grace
+     window kept in onSubmit. */
+  setDifficulty(client, next, now = Date.now()) {
+    const from = client.difficulty;
+    client.prevDiff = from;
+    client.prevDiffUntil = now + 60_000;
+    client.difficulty = next;
+    this.lastDifficulty.set(client.worker, next);
+    this.send(client, { id: null, method: 'mining.set_difficulty', params: [next] });
+    /* clean_jobs FALSE here. The new difficulty applies to work the miner takes
+       up next; forcing a discard would throw away a partially searched nonce
+       range to save a few seconds, and the grace window in onSubmit already
+       makes the handover fair in the other direction. */
+    const job = this.jobs.current;
+    if (job) this.send(client, { id: null, method: 'mining.notify', params: this.jobs.notifyParams(job, false) });
+    log(`  ${client.id} difficulty ${from} -> ${next}`
+        + ` (targeting ${VARDIFF.target}s/share for "${client.worker}")`);
+  }
+
+  /* Retarget on whichever comes first: the time window, or enough shares to
+     measure with. The share count matters for fast hardware — an ASIC starting
+     at difficulty 1 would otherwise flood for a full retarget period before
+     anything moved. */
+  retarget(client, now = Date.now()) {
+    const secs = (now - client.vdSince) / 1000;
+    const next = nextDifficulty(client.difficulty, client.vdShares, secs);
+    client.vdSince = now; client.vdShares = 0;
+    if (next !== client.difficulty) this.setDifficulty(client, next, now);
+  }
+
+  vardiffPass(now = Date.now()) {
+    for (const c of this.clients) {
+      if (!c.authorized) continue;
+      const secs = (now - c.vdSince) / 1000;
+      if (secs < VARDIFF.retarget && c.vdShares < VARDIFF.minShares) continue;
+
+      /* Near convergence the window holds only a handful of shares, and a rate
+         estimated from 3 or 4 of them carries ±50% error — easily enough to
+         breach the 30% tolerance on noise alone and set the difficulty
+         oscillating around the right answer forever. Wait for a bigger sample
+         instead, but never when the count is ZERO: that is a stalled miner and
+         nextDifficulty steps it down deliberately. */
+      if (c.vdShares > 0 && c.vdShares < 5 && secs < VARDIFF.retarget * 4) continue;
+
+      /* An EMPTY window needs to be long enough that silence is evidence.
+         Expected interval at the current difficulty is diff * 2^16 / rate, so
+         wait several of those before concluding anything — using the account's
+         measured rate when there is one, and a conservative floor otherwise. */
+      if (c.vdShares === 0) {
+        const acct = this.meter.byAccount(now).find((a) => a.account === c.account);
+        const rate = (acct && (acct.hs || acct.shortHs)) || 0;
+        const expected = rate > 0 ? (c.difficulty * HASHES_PER_DIFF1) / rate : VARDIFF.retarget;
+        if (secs < Math.max(VARDIFF.retarget * 4, expected * 4)) continue;
+      }
+
+      this.retarget(c, now);
+    }
+  }
+
+  broadcast(job, clean) {
+    for (const c of this.clients) {
+      if (c.authorized) this.send(c, { id: null, method: 'mining.notify', params: this.jobs.notifyParams(job, clean) });
+    }
+  }
+}
+
+/* ── meter selftest: pure, no daemon, injected clock ──────────────────────── */
+
+/**
+ * Runs with `--meter` alone, and as the first phase of `--selftest`.
+ *
+ * Every case drives an explicit `now` instead of the wall clock, which is the
+ * only way to test a 15-minute window without waiting 15 minutes. The
+ * dead-rig case is the one that matters: a lifetime average cannot fail it,
+ * because a lifetime average of a rig that stopped an hour ago still looks
+ * healthy, and that is precisely the lie a renter would be shown.
+ */
+function meterSelftest(check) {
+  const mk = (w, d = 1) => { const i = w.indexOf('.'); return {
+    worker: w, account: i === -1 ? w : w.slice(0, i),
+    rig: i === -1 ? '' : w.slice(i + 1), difficulty: d }; };
+  const T = 1_700_000_000_000;
+
+  { // confidence gate
+    const m = new ShareMeter(), c = mk('awm_00001.l9_001');
+    m.record(c, true, T);
+    check('1 share publishes no rate', m.byAccount(T + 600)[0].hs === null);
+    check('1 share is still billable', m.byAccount(T + 600)[0].sumDiff === 1);
+    check('report withholds BOTH rates below their gates',
+          m.report(T + 600).includes(`warming 1/${MIN_SHARES_SHORT}`)
+          && m.report(T + 600).includes(`warming 1/${MIN_SHARES_FOR_RATE}`),
+          m.report(T + 600));
+    for (let i = 1; i < MIN_SHARES_FOR_RATE; i++) m.record(c, true, T + i * 10);
+    const a = m.byAccount(T + 200)[0];
+    check(`${MIN_SHARES_FOR_RATE} shares publishes a rate`, a.hs !== null);
+    check('error bar shown is 1/sqrt(n)', Math.round(a.err * 100) === 22, Math.round(a.err * 100));
+  }
+
+  { /* The rate is numerically right under the SCRYPT convention: 600 diff-1
+       shares in 60s is 600 * 2^16 / 60 = 655.36 KH/s. This assertion read
+       42.9 GH/s until the 2^32 baseline was corrected — a test can only ever
+       certify the convention it was written against, so pin the arithmetic to
+       HASHES_PER_DIFF1 rather than to a number typed by hand. */
+    const m = new ShareMeter(), c = mk('awm_00001.l9_001');
+    for (let i = 0; i < 600; i++) m.record(c, true, T + i * 100);
+    const hs = m.byAccount(T + 60_000)[0].hs;
+    const want = 600 * HASHES_PER_DIFF1 / 60;
+    check(`600 diff-1 shares in 60s reads ~${ShareMeter.human(want)}`,
+          Math.abs(hs - want) / want < 0.02, ShareMeter.human(hs));
+    check('a Scrypt diff-1 share costs 2^16 hashes, not 2^32',
+          HASHES_PER_DIFF1 === 65536, HASHES_PER_DIFF1);
+  }
+
+  { // a rig that dies mid-lease
+    const m = new ShareMeter(), c = mk('awm_00002.mini3_001');
+    for (let i = 0; i < 200; i++) m.record(c, true, T + i * 100);
+    check('live rig reports a rate', m.byAccount(T + 20_000)[0].hs !== null);
+    const dead = m.byAccount(T + 20_000 + 16 * 60_000)[0];
+    check('rig silent 16 min: rate WITHDRAWN, not stale-high', dead.hs === null);
+    check('dead rig keeps its exact billable total', dead.sumDiff === 200, dead.sumDiff);
+  }
+
+  { // memory is bounded
+    const m = new ShareMeter(), c = mk('awm_00003.rig');
+    for (let h = 0; h < 300; h++) m.record(c, true, T + h * 60_000);
+    const w = m.workers.get('awm_00003.rig');
+    check('buckets pruned to the window (no unbounded growth)',
+          w.buckets.size <= WINDOW_BUCKETS, w.buckets.size);
+    check('lifetime total survives pruning', w.sumDiff === 300, w.sumDiff);
+  }
+
+  { // a fleet qualifies before any single rig does
+    const m = new ShareMeter();
+    for (let r = 0; r < 10; r++) { const c = mk(`awm_00004.rig_${r}`);
+      for (let i = 0; i < 5; i++) m.record(c, true, T + i * 1000); }
+    check('each rig alone sits below the gate',
+          ShareMeter.window(m.workers.get('awm_00004.rig_0'), T + 5000).hs === null);
+    const a = m.byAccount(T + 5000)[0];
+    check('10 rigs x 5 shares qualifies at account level', a.hs !== null);
+    check('fleet counted as 10 rigs', a.rigs === 10, a.rigs);
+  }
+
+  { // vardiff: direction, clamps, bounds
+    const V = { ...VARDIFF, target: 15, maxStep: 8, tolerance: 0.3, min: 1, max: 2 ** 28 };
+    check('too many shares raises difficulty',
+          nextDifficulty(1, 60, 60, V) > 1, nextDifficulty(1, 60, 60, V));
+    check('too few shares lowers difficulty',
+          nextDifficulty(1024, 1, 60, V) < 1024, nextDifficulty(1024, 1, 60, V));
+    check('on-target is left alone (no churn)',
+          nextDifficulty(8, 4, 60, V) === 8, nextDifficulty(8, 4, 60, V));
+    check('a single step cannot exceed maxStep',
+          nextDifficulty(1, 100000, 60, V) <= 8, nextDifficulty(1, 100000, 60, V));
+    check('never drops below min',
+          nextDifficulty(1, 0, 60, V) === 1, nextDifficulty(1, 0, 60, V));
+    check('never rises above max',
+          nextDifficulty(2 ** 28, 10000, 60, V) === 2 ** 28);
+    /* Gently: a full maxStep cut on one empty window wrecked a healthy rig
+       that was merely unlucky for 60 seconds. */
+    check('zero shares steps down by 2x, not maxStep',
+          nextDifficulty(512, 0, 60, V) === 256, nextDifficulty(512, 0, 60, V));
+    check('a stalled client still bottoms out at min eventually',
+          (() => { let d = 4096; for (let i = 0; i < 20; i++) d = nextDifficulty(d, 0, 60, V);
+                   return d === V.min; })());
+    check('damping cannot stall convergence one notch short',
+          nextDifficulty(2 ** 21, 7, 60, V) === 2 ** 22, nextDifficulty(2 ** 21, 7, 60, V));
+    check('result is always a power of two',
+          [1, 3, 7, 100, 999].every((d) => { const n = nextDifficulty(d, 40, 60, V);
+            return Number.isInteger(Math.log2(n)); }));
+  }
+
+  { // vardiff: it must actually converge for real hardware
+    const V = { ...VARDIFF, target: 15, maxStep: 8, tolerance: 0.3, min: 1, max: 2 ** 28 };
+    const settle = (hs) => {
+      let d = 1;
+      for (let i = 0; i < 40; i++) {
+        const shares = (hs * 60) / (d * HASHES_PER_DIFF1);   // expected in 60s
+        d = nextDifficulty(d, Math.round(shares), 60, V);
+      }
+      return d;
+    };
+    /* Ideal is hashrate * target / 2^32, rounded to a power of two. */
+    const ideal = (hs) => pow2((hs * V.target) / HASHES_PER_DIFF1);
+    for (const [name, hs] of [['580 MH/s', 580e6], ['2.2 GH/s', 2.2e9], ['9.5 GH/s', 9.5e9], ['17 GH/s', 17e9]]) {
+      const got = settle(hs), want = ideal(hs);
+      check(`vardiff settles for ${name} (got ${got}, ideal ${want})`,
+            got === want || (got >= want / 2 && got <= want * 2), `${got} vs ${want}`);
+    }
+    /* The real failure this guards: under the Bitcoin baseline a 17 GH/s rig
+       settled at 64, which would have handed it ~15 microseconds of work. */
+    check('a 17 GH/s rig settles in the hundreds of thousands, not at 64',
+          settle(17e9) >= 2 ** 18, settle(17e9));
+    check('settled difficulty gives roughly the target share interval',
+          Math.abs((settle(2.2e9) * HASHES_PER_DIFF1 / 2.2e9) - V.target) < V.target * 0.5,
+          `${(settle(2.2e9) * HASHES_PER_DIFF1 / 2.2e9).toFixed(1)}s vs ${V.target}s`);
+  }
+
+  { // the `d=N` password convention this hardware actually sends
+    const parse = (pass) => {
+      const m = /(?:^|[_,;&])d=(\d+(?:\.\d+)?)/.exec(String(pass || ''));
+      return m ? Math.min(VARDIFF.max, Math.max(VARDIFF.min, pow2(Number(m[1])))) : null;
+    };
+    check('parses the exact string the VolcMiner sends', parse('d=1098633_lock=3') === 2 ** 20,
+          parse('d=1098633_lock=3'));
+    /* Sanity: the hardware's own request should imply a sane share interval
+       under our convention. If this drifts, the convention is wrong again. */
+    check("the miner's own d= implies ~15-60s/share at ~2.3 GH/s",
+          (() => { const secs = 1098633 * HASHES_PER_DIFF1 / 2.3e9; return secs > 10 && secs < 120; })(),
+          `${(1098633 * HASHES_PER_DIFF1 / 2.3e9).toFixed(1)}s`);
+    check('plain d=64 parses', parse('d=64') === 64, parse('d=64'));
+    check('d= is rounded to a power of two', parse('d=100') === 128, parse('d=100'));
+    check('a password with no d= is ignored', parse('x') === null);
+    check('an absurd request is clamped to max', parse('d=999999999999') === VARDIFF.max);
+    check('a zero request is clamped to min', parse('d=0') === VARDIFF.min, parse('d=0'));
+    /* "id=5" must NOT match as a difficulty request: the delimiter class is
+       what prevents d= matching the tail of another key. */
+    check('d= inside another key is not matched', parse('uid=1234') === null, parse('uid=1234'));
+  }
+
+  { /* Grace-window crediting. The bug this pins: crediting every share at the
+       grace floor after an 8x retarget undercounts hashrate 8x for 60 seconds,
+       which showed up as a 2 GH/s rig reading 248 MH/s. */
+    const m = new ShareMeter();
+    const c = { worker: 'awm_00001.l9_001', account: 'awm_00001', rig: 'l9_001', difficulty: 32768 };
+    const oldDiff = 4096;
+    const creditFor = (achieved) => achieved >= c.difficulty ? c.difficulty : oldDiff;
+
+    check('share meeting the NEW difficulty is credited at the new one',
+          creditFor(45134) === 32768, creditFor(45134));
+    check('share meeting only the OLD difficulty keeps the old credit',
+          creditFor(9074) === 4096, creditFor(9074));
+    check('share exactly at the new difficulty counts as new',
+          creditFor(32768) === 32768, creditFor(32768));
+
+    /* The observed run: 16 shares before the retarget, 7 after it, with the
+       post-retarget shares all achieving well above 32768. */
+    for (let i = 0; i < 16; i++) m.record({ ...c, difficulty: oldDiff }, true, T + i * 1000, oldDiff);
+    for (let i = 0; i < 7; i++)  m.record(c, true, T + (16 + i) * 1000, creditFor(45134));
+    const billed = m.byAccount(T + 23_000)[0].sumDiff;
+    check('billable reflects the real work (16x4096 + 7x32768)',
+          billed === 16 * 4096 + 7 * 32768, billed);
+    check('the old floor-crediting would have undercounted ~3.1x',
+          Math.abs(billed / (23 * 4096) - 3.13) < 0.05, (billed / (23 * 4096)).toFixed(2));
+  }
+
+  { /* The short window must track reality faster than the long one. Pinned
+       from the observed run: 2 min at ~250 MH/s then 4 min at ~1.6 GH/s. The
+       15-min average reads the blend; "now" should read the current rate. */
+    const m = new ShareMeter(), c = mk('awm_00001.l9_001', 262144);
+    const slow = mk('awm_00001.l9_001', 4096);
+    // 2 minutes of slow shares, then 4 minutes of fast ones
+    for (let i = 0; i < 30; i++) m.record(slow, true, T + i * 4000, 4096);
+    for (let i = 0; i < 40; i++) m.record(c, true, T + 120_000 + i * 6000, 262144);
+    const a = m.byAccount(T + 360_000)[0];
+    check('short window reports a rate', a.shortHs !== null, 'null');
+    check('long window reports a rate', a.hs !== null, 'null');
+    check('"now" reads higher than the 15-min blend after a step up',
+          a.shortHs > a.hs, `${ShareMeter.human(a.shortHs)} vs ${ShareMeter.human(a.hs)}`);
+    check('short window has a wider error bar than the long one',
+          a.shortErr >= a.err, `${a.shortErr} vs ${a.err}`);
+    check('billable is unaffected by either window',
+          a.sumDiff === 30 * 4096 + 40 * 262144, a.sumDiff);
+  }
+
+  { // difficulty weighting, and rejects kept out of both totals
+    const m = new ShareMeter(), lo = mk('awm_00005.lo', 1), hi = mk('awm_00005.hi', 64);
+    for (let i = 0; i < 30; i++) { m.record(lo, true, T + i * 100); m.record(hi, true, T + i * 100); }
+    for (let i = 0; i < 7; i++) m.record(lo, false, T + i * 100);
+    const a = m.byAccount(T + 3000)[0];
+    check('billable weights difficulty, not share count', a.sumDiff === 30 + 1920, a.sumDiff);
+    check('rejects counted separately', a.rejected === 7, a.rejected);
+    check('rejects excluded from the rate window', a.winShares === 60, a.winShares);
+  }
+}
+
+/* ── selftest: a synthetic miner drives the whole loop ────────────────────── */
+
+async function selftest() {
+  let failures = 0;
+  const green = (s) => `\x1b[32m${s}\x1b[0m`, red = (s) => `\x1b[31m${s}\x1b[0m`;
+  const check = (n, c, d = '') => { if (c) console.log(`  ${green('PASS')} ${n}`); else { console.log(`  ${red('FAIL')} ${n} ${d}`); failures++; } };
+
+  /* Phase 1: pure logic, no daemon. Runs first so a meter regression is not
+     buried under RPC failures from an unrelated node problem. */
+  console.log('\n— meter (pure, injected clock) —');
+  meterSelftest(check);
+  if (failures) { console.log(`\n${red(`${failures} meter failure(s) — stopping before the chain tests.`)}\n`); process.exit(1); }
+
+  console.log('\n— stratum loop (against regtest) —');
+  const info = await rpc('getblockchaininfo');
+  if (info.chain !== 'regtest') throw new Error(`regtest only, got "${info.chain}"`);
+
+  let addr; try { addr = await rpc('getnewaddress'); }
+  catch { await rpc('createwallet', ['stratum']).catch(() => {}); addr = await rpc('getnewaddress'); }
+  console.log(`\nregtest height ${info.blocks}, payout ${addr}\n`);
+
+  const WORKER_NAME = 'awm_00001.avalonmini3_001';
+
+  const jobs = new JobManager(addr);
+  await jobs.refresh();
+  const srv = new StratumServer({ port: 0, jobs });
+  const port = await srv.start();
+
+  const result = await new Promise((resolve, reject) => {
+    const sock = net.connect(port, '127.0.0.1');
+    let buf = '', en1 = null, en2size = 4, job = null, got = { sub: false, auth: false, notify: false, accepted: null };
+    const to = setTimeout(() => reject(new Error('timed out')), 30000);
+
+    sock.on('connect', () => sock.write(JSON.stringify({ id: 1, method: 'mining.subscribe', params: ['awm-selftest/1.0'] }) + '\n'));
+    sock.on('data', async (d) => {
+      buf += d.toString();
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line) continue;
+        const m = JSON.parse(line);
+
+        if (m.id === 1 && m.result) {
+          got.sub = true;
+          en1 = Buffer.from(m.result[1], 'hex'); en2size = m.result[2];
+          /* Authorize with AWM's real worker-name convention, NOT the payout
+             address. An earlier version of this test sent `addr` here, which
+             made the username and the payout address identical and so could
+             not tell whether the coinbase honoured the configured address or
+             the username — the two agreed by construction. A name that could
+             never be an address is the only form of this test that proves
+             anything. */
+          sock.write(JSON.stringify({ id: 2, method: 'mining.authorize',
+            params: [WORKER_NAME, 'x'] }) + '\n');
+        } else if (m.id === 2) {
+          got.auth = m.result === true;
+        } else if (m.method === 'mining.notify') {
+          got.notify = true;
+          const [jid, , cb1, cb2, branch, ver, bits, ntime] = m.params;
+          job = { jid, cb1: Buffer.from(cb1, 'hex'), cb2: Buffer.from(cb2, 'hex'),
+                  branch: branch.map((b) => Buffer.from(b, 'hex')),
+                  ver: parseInt(ver, 16), bits, ntime: parseInt(ntime, 16) };
+
+          // Solve exactly as a miner would, from the pieces we were sent.
+          const en2 = Buffer.alloc(en2size); en2.writeUInt32BE(1);
+          const coinbase = Buffer.concat([job.cb1, en1, en2, job.cb2]);
+          const merkle = foldBranch(sha256d(coinbase), job.branch);
+          const target = targetFromBits(job.bits);
+          let nonce = 0, hdr = null;
+          for (; nonce <= 0xffffffff; nonce++) {
+            hdr = Buffer.concat([u32le(job.ver), rev(Buffer.from(jobs.current.prevhash, 'hex')), merkle,
+                                 u32le(job.ntime), rev(Buffer.from(job.bits, 'hex')), u32le(nonce)]);
+            if (hashToBig(scryptPoW(hdr)) <= target) break;
+          }
+          sock.write(JSON.stringify({ id: 3, method: 'mining.submit',
+            params: [addr, jid, en2.toString('hex'),
+                     job.ntime.toString(16).padStart(8, '0'),
+                     nonce.toString(16).padStart(8, '0')] }) + '\n');
+        } else if (m.id === 3) {
+          got.accepted = m.result === true ? true : (m.error || false);
+          // Negative control. Regtest's target is so easy that a random nonce
+          // often clears it, so a bogus nonce proves nothing — an unknown job
+          // id is the deterministic way to show the server validates at all
+          // rather than rubber-stamping everything it receives.
+          sock.write(JSON.stringify({ id: 4, method: 'mining.submit',
+            params: [addr, 'deadbeef', '00000001', '00000000', '00000000'] }) + '\n');
+        } else if (m.id === 4) {
+          got.rejectedUnknownJob = m.result === false || Boolean(m.error);
+          clearTimeout(to); sock.end(); resolve(got);
+        }
+      }
+    });
+    sock.on('error', reject);
+  });
+
+  check('miner subscribed and got extranonce1', result.sub);
+  check('worker name that is NOT an address was accepted', result.auth);
+  check('server pushed mining.notify', result.notify);
+  check('share accepted', result.accepted === true, JSON.stringify(result.accepted));
+  check('unknown job id refused (server actually validates)', result.rejectedUnknownJob === true);
+
+  await new Promise((r) => setTimeout(r, 500));
+  const after = await rpc('getblockchaininfo');
+  check(`block landed on chain (${info.blocks} -> ${after.blocks})`, after.blocks > info.blocks);
+  check('coinbase paid the CONFIGURED address, not the worker name',
+        srv.lastBlock?.address === addr, JSON.stringify(srv.lastBlock));
+  check('winning worker credited separately from the payee',
+        srv.lastBlock?.worker === WORKER_NAME, JSON.stringify(srv.lastBlock));
+
+  /* Ask the daemon who actually got paid. Everything above this line is the
+     server agreeing with itself; this is the chain's answer. */
+  const won = await rpc('getblock', [(await rpc('getblockhash', [after.blocks])), 2]);
+  const paidTo = won.tx?.[0]?.vout?.[0]?.scriptPubKey?.addresses?.[0]
+              ?? won.tx?.[0]?.vout?.[0]?.scriptPubKey?.address;
+  check(`chain confirms coinbase output pays ${addr}`, paidTo === addr,
+        `daemon says ${paidTo}`);
+
+  /* Metering: the share must be attributed to the worker that sent it, and
+     roll up under the account prefix a lease would be billed against. */
+  const acct = srv.meter.byAccount();
+  check('meter attributed the share to its worker',
+        srv.meter.workers.get(WORKER_NAME)?.accepted >= 1,
+        JSON.stringify([...srv.meter.workers.values()]));
+  check('meter rolled the worker up under its account prefix',
+        acct.length === 1 && acct[0].account === 'awm_00001' && acct[0].rigs === 1,
+        JSON.stringify(acct));
+  console.log(`\n  ${srv.meter.report()}\n`);
+
+  await srv.stop();
+  console.log(`\n${failures === 0 ? green('Full stratum loop verified end to end.') : red(`${failures} failure(s).`)}\n`);
+  process.exit(failures === 0 ? 0 : 1);
+}
+
+/* ── run ──────────────────────────────────────────────────────────────────── */
+
+async function run() {
+  const addr = process.env.PAYOUT_ADDRESS;
+  if (!addr) throw new Error(
+    'set PAYOUT_ADDRESS — every block this server finds pays it, whatever\n'
+    + 'usernames the miners authorize with. On StartOS that is the node\n'
+    + "operator's own address; for AWM it is AWM's standard DOGE address.");
+
+  const jobs = new JobManager(addr);          // throws now if addr is malformed
+  await jobs.refresh();
+  log(`all blocks pay ${addr}`);
+
+  const srv = new StratumServer({ port: Number(process.env.STRATUM_PORT || 3333), jobs });
+  await srv.start();
+  setInterval(async () => {
+    try {
+      const job = await jobs.refresh();
+      /* clean_jobs ONLY when the tip actually moved. Sending it
+         unconditionally orders the miner to throw away work that is still
+         valid, which on mainnet happens every time the template picks up a
+         transaction — several times a minute, each one discarding partial
+         work for no reason. Regtest hid this because with no transactions the
+         only thing that ever changes the template IS the tip. */
+      if (job) srv.broadcast(job, job.tipMoved);
+    } catch (e) { log(`! refresh: ${e.message}`); }
+  }, Number(process.env.REFRESH_MS || 5000));
+
+  /* Vardiff is checked often; each client's own window decides when it moves. */
+  setInterval(() => srv.vardiffPass(), 5000);
+
+  const every = Number(process.env.REPORT_SECONDS || 60);
+  if (every > 0) setInterval(() => log(srv.meter.report()), every * 1000);
+}
+
+const die = (e) => { console.error(`\n\x1b[31m${e.message}\x1b[0m\n`); process.exit(1); };
+
+if (process.argv.includes('--meter')) {
+  /* Meter logic only — needs no node, no wallet, no network. */
+  let f = 0;
+  const g = (s) => `\x1b[32m${s}\x1b[0m`, r = (s) => `\x1b[31m${s}\x1b[0m`;
+  meterSelftest((n, c, d = '') => { if (c) console.log(`  ${g('PASS')} ${n}`); else { console.log(`  ${r('FAIL')} ${n} ${d}`); f++; } });
+  console.log(`\n${f === 0 ? g('meter logic verified.') : r(`${f} failure(s).`)}\n`);
+  process.exit(f ? 1 : 0);
+} else if (process.argv.includes('--selftest')) selftest().catch(die);
+else run().catch(die);

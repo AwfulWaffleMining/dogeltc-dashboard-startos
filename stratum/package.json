@@ -1,0 +1,20 @@
+{
+  "name": "scrypt-solo",
+  "version": "0.1.0",
+  "description": "A solo Scrypt stratum server with no dependencies. Mines to your own node.",
+  "type": "module",
+  "main": "scrypt-solo.mjs",
+  "bin": { "scrypt-solo": "./scrypt-solo.mjs" },
+  "scripts": {
+    "test": "node scrypt-solo.mjs --meter",
+    "test:chain": "node scrypt-solo.mjs --selftest"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "keywords": ["scrypt", "stratum", "dogecoin", "litecoin", "solo-mining"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AwfulWaffleMining/scrypt-solo.git"
+  },
+  "files": ["scrypt-solo.mjs", "README.md", "LICENSE"]
+}
