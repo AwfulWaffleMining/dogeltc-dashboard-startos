@@ -705,32 +705,129 @@ class ShareMeter {
   }
 }
 
+/* Addresses carried in the stratum username, for an operator who chose not
+ * to store them on the server:
+ *
+ *     LTC_ADDRESS,DOGE_ADDRESS.RIG_ID
+ *
+ * Unambiguous to split, because no Litecoin or Dogecoin address contains a
+ * comma or a dot -- base58 has neither, and bech32's charset excludes both.
+ *
+ * Returns null for an ordinary worker name, which is the overwhelmingly
+ * common case and must stay free. Throws for something that LOOKS like this
+ * form but is not valid, so a typo is refused at authorize rather than
+ * discovered when a block pays nobody.
+ *
+ * The cost of this convenience is real, and is why it is not the default:
+ * stratum v1 is plaintext, so both addresses cross the wire on every
+ * reconnect, and the string runs ~85 characters with a comma in it, which
+ * some Canaan/Avalon firmware refuses outright.
+ */
+function parseWorkerPayout(username) {
+  const comma = username.indexOf(',');
+  if (comma === -1) return null;
+  const ltc = username.slice(0, comma).trim();
+  const rest = username.slice(comma + 1);
+  const dot = rest.indexOf('.');
+  const doge = (dot === -1 ? rest : rest.slice(0, dot)).trim();
+  const rig = dot === -1 ? '' : rest.slice(dot + 1).trim();
+  if (!ltc || !doge) throw new Error('expected LTC_ADDRESS,DOGE_ADDRESS.RIG');
+  // Both decode or the miner is refused. addressToScript is the same check
+  // the coinbase builder would make, just made now instead of too late.
+  addressToScript(ltc);
+  addressToScript(doge);
+  /* A short stable handle for the pair, so the dashboard groups one person's
+     rigs together without showing 85 characters of address in every row. */
+  const account = 'ext' + sha256(Buffer.from(`${ltc}|${doge}`)).toString('hex').slice(0, 6);
+  return { target: { kind: 'fixed', ltc, doge }, rig: rig || 'rig1', account };
+}
+
 /* ── jobs ─────────────────────────────────────────────────────────────────── */
 
 const EN1_SIZE = 4, EN2_SIZE = 4;
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 class JobManager {
-  /* The payout address lives here, resolved once.
+  /* Jobs are keyed by PAYOUT TARGET, not by worker.
    *
-   * There is exactly one of them per server — see mining.authorize — so taking
-   * it in the constructor means a malformed address throws at startup instead
-   * of yielding blocks that pay nobody, and no call site can hand refresh() a
-   * script that disagrees with the address being reported in the logs. */
-  constructor(payoutAddress, auxAddress = null) {
-    this.jobs = new Map(); this.current = null; this.seq = 0;
-    this.payoutAddress = payoutAddress;
-    this.payoutScript = addressToScript(payoutAddress);
-    /* Validated by the AUX chain's own node, not here: `createauxblock`
-       refuses a bad payout address with "Invalid coinbase payout address",
-       which is a better check than any regex, and it is the node that has to
-       pay it. Passing it through means a wrong address fails on the first
-       refresh rather than when a block is found. */
-    this.auxAddress = auxAddress;
+   * The coinbase pays the address, the coinbase is in the merkle root, and
+   * the merkle root is in the header the miner hashes -- so two miners with
+   * different payout addresses cannot share a job. They can share a target:
+   * every rig in one household points at the same two wallets, so the common
+   * case is exactly one target and exactly the RPC cost of the old code.
+   *
+   * A target is one of:
+   *   fixed      -- addresses from the service config, or parsed from a
+   *                 worker name by an operator who chose not to store them
+   *   nodeWallet -- resolved fresh from each node on every template, so the
+   *                 promise of a new address per block is literally true
+   */
+  /* defaultTarget may be null: in workerName mode the operator stores no
+     addresses at all, so there is nothing to pay until a miner says where.
+     The port still binds -- unlike 'unset', this IS a configured choice. */
+  constructor(defaultTarget) {
+    this.jobs = new Map(); this.seq = 0;
+    this.targets = new Map();
+    this.lastTemplate = null;
+    this.defaultKey = defaultTarget ? this.addTarget(defaultTarget) : null;
+  }
+
+  static key(t) {
+    return t.kind === 'nodeWallet' ? 'nodeWallet' : `${t.ltc}|${t.doge ?? ''}`;
+  }
+
+  /* Validated HERE rather than at first use. A malformed address that only
+     throws once a block is found is the worst possible time to learn of it,
+     and addressToScript is the same check the coinbase builder would make. */
+  addTarget(t) {
+    const key = JobManager.key(t);
+    if (this.targets.has(key)) return key;
+    if (t.kind !== 'nodeWallet') {
+      addressToScript(t.ltc);                       // throws on a bad address
+      if (AUX_ENABLED && !t.doge) {
+        throw new Error('merge mining needs a Dogecoin address as well as a Litecoin one');
+      }
+    }
+    this.targets.set(key, { ...t, key, current: null });
+    return key;
+  }
+
+  /* A cap, because a target costs an RPC per template on each chain and the
+     worker name is attacker-controlled on any LAN the stratum is reachable
+     from. One household needs one; a handful covers sharing a box. */
+  static MAX_TARGETS = 8;
+
+  async ensureTarget(t) {
+    const key = JobManager.key(t);
+    if (this.targets.has(key)) return key;
+    if (this.targets.size >= JobManager.MAX_TARGETS) {
+      throw new Error(`too many distinct payout addresses (max ${JobManager.MAX_TARGETS})`);
+    }
+    this.addTarget(t);
+    // Give it work immediately rather than making the miner wait for the next
+    // template: it has already authorized and expects a job.
+    if (this.lastTemplate) await this.buildFor(this.targets.get(key), this.lastTemplate, false);
+    return key;
+  }
+
+  jobFor(key) {
+    if (!key) return null;
+    const t = this.targets.get(key) || (this.defaultKey ? this.targets.get(this.defaultKey) : null);
+    return t ? t.current : null;
+  }
+
+  /* Resolve the pair of addresses this target pays, for this template.
+     Fixed targets answer from memory; nodeWallet asks each node, which is
+     what makes "a fresh address per block" true rather than aspirational. */
+  async addressesFor(target) {
+    if (target.kind !== 'nodeWallet') return { ltc: target.ltc, doge: target.doge };
+    const ltc = await rpc('getnewaddress');
+    let doge = null;
+    if (AUX_ENABLED) doge = await auxRpc('getnewaddress');
+    return { ltc, doge };
   }
 
   async refresh() {
-    const payoutScript = this.payoutScript;
     /* The rule set is per-chain and NOT optional on Litecoin.
      *
      * Dogecoin 1.14 predates segwit and is happy with an empty list. Litecoin
@@ -744,16 +841,41 @@ class JobManager {
      * only good thing about it. Driven by env so one binary serves both and
      * the package sets it per chain. */
     const t = await rpc('getblocktemplate', [{ rules: GBT_RULES }]);
-    if (this.current && this.current.prevhash === t.previousblockhash
-        && this.current.txCount === (t.transactions || []).length) return null;
+    const prev = this.lastTemplate;
+    const unchanged = prev
+      && prev.previousblockhash === t.previousblockhash
+      && (prev.transactions || []).length === (t.transactions || []).length;
+    /* nodeWallet must rebuild even on an unchanged template: its whole point
+       is a different address each time, and skipping the rebuild would quietly
+       reuse the last one. */
+    const anyFresh = [...this.targets.values()].some((x) => x.kind === 'nodeWallet' || !x.current);
+    if (unchanged && !anyFresh) return null;
+    if (this.targets.size === 0) { this.lastTemplate = t; return null; }
 
     /* Only a MOVED TIP orphans the previous jobs. A template that merely picked
      * up new transactions still builds on the same prevhash, so blocks found
-     * against the old job remain perfectly valid and must stay submittable —
+     * against the old job remain perfectly valid and must stay submittable --
      * marking those stale would throw away real blocks. */
-    const tipMoved = this.current !== null && this.current.prevhash !== t.previousblockhash;
+    const tipMoved = prev !== null && prev.previousblockhash !== t.previousblockhash;
     if (tipMoved) for (const j of this.jobs.values()) j.stale = true;
+    this.lastTemplate = t;
 
+    let first = null;
+    for (const target of this.targets.values()) {
+      try {
+        const job = await this.buildFor(target, t, tipMoved);
+        if (!first) first = job;
+      } catch (e) {
+        /* One target's failure must not cost the others their work. */
+        log(`! target ${target.key}: ${e.message} — no work for it this round`);
+      }
+    }
+    return first;
+  }
+
+  async buildFor(target, t, tipMoved) {
+    const { ltc, doge } = await this.addressesFor(target);
+    const payoutScript = addressToScript(ltc);
     const txs = t.transactions || [];
     /* Supplied by chains with segwit active, absent on Dogecoin 1.14. Taken
        from the template rather than computed here: it commits to the wtxid
@@ -765,13 +887,15 @@ class JobManager {
       : null;
 
     /* Ask the aux chain for a block to commit to. Its hash goes into the
-       parent coinbase, so this MUST happen before the coinbase is built —
+       parent coinbase, so this MUST happen before the coinbase is built --
        and a new one is taken per template, because committing to a stale aux
-       block means a solved parent header that the aux chain refuses. */
+       block means a solved parent header that the aux chain refuses.
+       Per target, because createauxblock builds the aux coinbase around the
+       address it is given. */
     let aux = null;
-    if (AUX_ENABLED) {
+    if (AUX_ENABLED && doge) {
       try {
-        const a = await auxRpc('createauxblock', [this.auxAddress]);
+        const a = await auxRpc('createauxblock', [doge]);
         aux = {
           hash: a.hash,
           chainid: a.chainid,
@@ -809,6 +933,10 @@ class JobManager {
       version: t.version, bits: t.bits, curtime: t.curtime,
       target: targetFromBits(t.bits), txs, txCount: txs.length,
       payoutScript, stale: false,
+      /* Carried on the job, not read off the manager: with more than one
+         target the manager has no single answer, and a block log that names
+         the wrong address is worse than none. */
+      payoutAddress: ltc, auxAddress: doge, targetKey: target.key,
       /* Whether the PREVIOUS work became invalid. This is what clean_jobs on
          mining.notify means, and the two cases are not the same: a moved tip
          invalidates work in progress, a template that merely picked up new
@@ -817,9 +945,12 @@ class JobManager {
     };
     this.jobs.set(job.id, job);
     // Keep a short history so late shares on the previous job still validate.
-    if (this.jobs.size > 8) this.jobs.delete(this.jobs.keys().next().value);
-    this.current = job;
-    log(`job ${job.id} height ${job.height} txs ${job.txCount} branch ${job.branch.length}`);
+    // Scaled by target count so one busy target cannot evict another's job.
+    const keep = 8 * Math.max(1, this.targets.size);
+    while (this.jobs.size > keep) this.jobs.delete(this.jobs.keys().next().value);
+    target.current = job;
+    log(`job ${job.id} height ${job.height} txs ${job.txCount} branch ${job.branch.length}`
+        + (this.targets.size > 1 ? ` [${target.key.slice(0, 24)}]` : ''));
     return job;
   }
 
@@ -949,7 +1080,50 @@ class StratumServer {
          *
          * So accept any username, keep it for logging and per-worker stats,
          * and never let it influence where money goes. */
-        client.worker = String(params[0] || 'anonymous');
+        const rawUser = String(params[0] || 'anonymous');
+
+        /* A username may carry its own payout addresses, for an operator who
+           chose not to store them on the server:
+               LTC_ADDRESS,DOGE_ADDRESS.RIG_ID
+           Both addresses are validated before the miner is accepted. A typo
+           must NOT silently fall back to the configured address -- that would
+           pay the operator for someone else's work, or the other way round.
+           The cost of this convenience is real and is the reason it is not
+           the default: stratum v1 is plaintext, so both addresses cross the
+           wire on every reconnect, and the string is ~85 characters with a
+           comma in it, which some Canaan/Avalon firmware refuses outright.
+
+           The parse is INSIDE the try: it throws on a malformed address, and
+           an exception escaping here would leave the miner with no response
+           at all -- it sits on an unanswered authorize until it gives up,
+           which looks like a dead pool rather than a typo. */
+        let supplied = null;
+        client.payoutKey = this.jobs.defaultKey;
+        try {
+          supplied = parseWorkerPayout(rawUser);
+          if (supplied) client.payoutKey = await this.jobs.ensureTarget(supplied.target);
+        } catch (e) {
+          log(`  ${client.id} refused: ${e.message}`);
+          this.send(client, { id, error: [24, `payout address refused: ${e.message}`, null], result: false });
+          return;
+        }
+        /* Rewritten so the long form never reaches the logs, the stats API or
+           the dashboard; the addresses live on the job already. Assigned only
+           once the parse has succeeded, so a refused address is not carried
+           around on the client either. */
+        if (!supplied && !this.jobs.defaultKey) {
+          /* workerName mode: the operator stores no addresses, so a username
+             without them has nowhere to pay. Refusing is the only honest
+             answer -- accepting would hand out work whose coinbase pays
+             nobody. */
+          const why = 'this server stores no payout address; authorize as'
+            + ' LTC_ADDRESS,DOGE_ADDRESS.RIG';
+          log(`  ${client.id} refused: no payout addresses supplied`);
+          this.send(client, { id, error: [24, why, null], result: false });
+          return;
+        }
+        client.worker = supplied ? `${supplied.account}.${supplied.rig}` : rawUser;
+        client.suppliedPayout = Boolean(supplied);
 
         /* Stratum's "account.rig" convention maps onto the lease model with no
          * extra protocol: the part before the dot identifies who is renting,
@@ -993,7 +1167,7 @@ class StratumServer {
         log(`  ${client.id} authorized worker "${client.worker}"`
             + ` (account ${client.account}${client.rig ? `, rig ${client.rig}` : ''})`);
         this.send(client, { id: null, method: 'mining.set_difficulty', params: [client.difficulty] });
-        const job = this.jobs.current;
+        const job = this.jobs.jobFor(client.payoutKey);
         if (job) this.send(client, { id: null, method: 'mining.notify', params: this.jobs.notifyParams(job, true) });
         break;
       }
@@ -1110,10 +1284,10 @@ class StratumServer {
         const res = await auxRpc('submitauxblock', [job.aux.hash, auxpow]);
         if (res === true || res === null) {
           log(`  *** AUX BLOCK ACCEPTED — ${job.aux.height} on the aux chain`
-              + ` -> ${this.jobs.auxAddress} (found by "${client.worker}") ***`);
+              + ` -> ${job.auxAddress} (found by "${client.worker}") ***`);
           this.blocks.push({
             chain: AUX_CHAIN, height: job.aux.height,
-            address: this.jobs.auxAddress, worker: client.worker,
+            address: job.auxAddress, worker: client.worker,
             foundAt: Date.now(),
           });
           if (this.blocks.length > 500) this.blocks.shift();
@@ -1166,11 +1340,11 @@ class StratumServer {
           /* Report the address the coinbase actually pays, and credit the
              worker separately. Naming the worker here as the payee would be a
              lie that only surfaces when someone goes looking for coins. */
-          log(`  *** ACCEPTED — height ${job.height} -> ${this.jobs.payoutAddress}`
+          log(`  *** ACCEPTED — height ${job.height} -> ${job.payoutAddress}`
               + ` (found by "${client.worker}") ***`);
           this.lastBlock = {
             height: job.height,
-            address: this.jobs.payoutAddress,
+            address: job.payoutAddress,
             worker: client.worker,
           };
           /* Recorded for the stats API. `chain` is carried explicitly rather
@@ -1180,7 +1354,7 @@ class StratumServer {
           this.blocks.push({
             chain: PRIMARY_CHAIN,
             height: job.height,
-            address: this.jobs.payoutAddress,
+            address: job.payoutAddress,
             worker: client.worker,
             foundAt: Date.now(),
           });
@@ -1213,7 +1387,7 @@ class StratumServer {
        up next; forcing a discard would throw away a partially searched nonce
        range to save a few seconds, and the grace window in onSubmit already
        makes the handover fair in the other direction. */
-    const job = this.jobs.current;
+    const job = this.jobs.jobFor(client.payoutKey);
     if (job) this.send(client, { id: null, method: 'mining.notify', params: this.jobs.notifyParams(job, false) });
     log(`  ${client.id} difficulty ${from} -> ${next}`
         + ` (targeting ${VARDIFF.target}s/share for "${client.worker}")`);
@@ -1259,9 +1433,13 @@ class StratumServer {
     }
   }
 
+  /* `job` is only consulted for whether the previous work died; WHICH job
+     each client gets depends on where that client's blocks pay. */
   broadcast(job, clean) {
     for (const c of this.clients) {
-      if (c.authorized) this.send(c, { id: null, method: 'mining.notify', params: this.jobs.notifyParams(job, clean) });
+      if (!c.authorized) continue;
+      const j = this.jobs.jobFor(c.payoutKey);
+      if (j) this.send(c, { id: null, method: 'mining.notify', params: this.jobs.notifyParams(j, clean) });
     }
   }
 }
@@ -1495,9 +1673,25 @@ async function selftest() {
   catch { await rpc('createwallet', ['stratum']).catch(() => {}); addr = await rpc('getnewaddress'); }
   console.log(`\nregtest height ${info.blocks}, payout ${addr}\n`);
 
-  const WORKER_NAME = 'awm_00001.avalonmini3_001';
+  /* The aux payout, resolved the same way the primary one is rather than
+     demanded from the environment: a selftest that needs hand-set variables
+     is one people stop running. */
+  let auxAddr = process.env.AUX_PAYOUT_ADDRESS || null;
+  if (AUX_ENABLED && !auxAddr) {
+    try { auxAddr = await auxRpc('getnewaddress'); }
+    catch { await auxRpc('createwallet', ['stratum']).catch(() => {}); auxAddr = await auxRpc('getnewaddress'); }
+    console.log(`aux payout ${auxAddr}`);
+  }
 
-  const jobs = new JobManager(addr, process.env.AUX_PAYOUT_ADDRESS || null);
+  /* SELFTEST_PAYOUT_WORKER exercises the opt-out path: the server stores NO
+     address and the miner supplies both in its username. The assertions below
+     then prove the block paid what the MINER asked for, not what the server
+     was configured with -- which is the whole claim of that mode. */
+  const SUPPLIED = process.env.SELFTEST_PAYOUT_WORKER || '';
+  const WORKER_NAME = SUPPLIED || 'awm_00001.avalonmini3_001';
+  const expectPaid = SUPPLIED ? SUPPLIED.slice(0, SUPPLIED.indexOf(',')) : addr;
+
+  const jobs = new JobManager(SUPPLIED ? null : { kind: 'fixed', ltc: addr, doge: auxAddr });
   await jobs.refresh();
   const srv = new StratumServer({ port: 0, jobs });
   const port = await srv.start();
@@ -1544,7 +1738,7 @@ async function selftest() {
           const target = targetFromBits(job.bits);
           let nonce = 0, hdr = null;
           for (; nonce <= 0xffffffff; nonce++) {
-            hdr = Buffer.concat([u32le(job.ver), rev(Buffer.from(jobs.current.prevhash, 'hex')), merkle,
+            hdr = Buffer.concat([u32le(job.ver), rev(Buffer.from(jobs.jobs.get(jid).prevhash, 'hex')), merkle,
                                  u32le(job.ntime), rev(Buffer.from(job.bits, 'hex')), u32le(nonce)]);
             if (hashToBig(scryptPoW(hdr)) <= target) break;
           }
@@ -1578,27 +1772,43 @@ async function selftest() {
   await new Promise((r) => setTimeout(r, 500));
   const after = await rpc('getblockchaininfo');
   check(`block landed on chain (${info.blocks} -> ${after.blocks})`, after.blocks > info.blocks);
-  check('coinbase paid the CONFIGURED address, not the worker name',
-        srv.lastBlock?.address === addr, JSON.stringify(srv.lastBlock));
+  check(SUPPLIED
+          ? 'coinbase paid the address the MINER supplied'
+          : 'coinbase paid the CONFIGURED address, not the worker name',
+        srv.lastBlock?.address === expectPaid, JSON.stringify(srv.lastBlock));
+  /* Either way the payee and the finder are separate fields: who gets paid
+     must never be inferred from who found it. */
   check('winning worker credited separately from the payee',
-        srv.lastBlock?.worker === WORKER_NAME, JSON.stringify(srv.lastBlock));
+        Boolean(srv.lastBlock?.worker) && srv.lastBlock.worker !== srv.lastBlock.address,
+        JSON.stringify(srv.lastBlock));
 
   /* Ask the daemon who actually got paid. Everything above this line is the
      server agreeing with itself; this is the chain's answer. */
   const won = await rpc('getblock', [(await rpc('getblockhash', [after.blocks])), 2]);
   const paidTo = won.tx?.[0]?.vout?.[0]?.scriptPubKey?.addresses?.[0]
               ?? won.tx?.[0]?.vout?.[0]?.scriptPubKey?.address;
-  check(`chain confirms coinbase output pays ${addr}`, paidTo === addr,
-        `daemon says ${paidTo}`);
+  /* Under SELFTEST_PAYOUT_WORKER this is the assertion that matters: the
+     server held NO address, so the only way the coinbase can pay this one is
+     if the username carried it all the way into the block. */
+  check(`chain confirms coinbase output pays ${expectPaid}`
+        + (SUPPLIED ? ' (supplied by the miner, not configured)' : ''),
+        paidTo === expectPaid, `daemon says ${paidTo}`);
 
   /* Metering: the share must be attributed to the worker that sent it, and
      roll up under the account prefix a lease would be billed against. */
   const acct = srv.meter.byAccount();
   check('meter attributed the share to its worker',
-        srv.meter.workers.get(WORKER_NAME)?.accepted >= 1,
+        srv.meter.workers.get(SUPPLIED ? [...srv.meter.workers.keys()][0] : WORKER_NAME)?.accepted >= 1,
         JSON.stringify([...srv.meter.workers.values()]));
+  /* With supplied addresses the account is the short handle derived from the
+     pair, not the username: the 85-character form must never reach the meter,
+     the logs or the dashboard. */
+  const expectAccount = SUPPLIED
+    ? 'ext' + sha256(Buffer.from(`${SUPPLIED.slice(0, SUPPLIED.indexOf(','))}|`
+        + SUPPLIED.slice(SUPPLIED.indexOf(',') + 1, SUPPLIED.lastIndexOf('.')))).toString('hex').slice(0, 6)
+    : 'awm_00001';
   check('meter rolled the worker up under its account prefix',
-        acct.length === 1 && acct[0].account === 'awm_00001' && acct[0].rigs === 1,
+        acct.length === 1 && acct[0].account === expectAccount && acct[0].rigs === 1,
         JSON.stringify(acct));
   console.log(`\n  ${srv.meter.report()}\n`);
 
@@ -1680,6 +1890,20 @@ function statsSnapshot(srv, now = Date.now()) {
     startedAt: srv.startedAt,
     uptimeSeconds: Math.round((now - srv.startedAt) / 1000),
     payoutMode: process.env.PAYOUT_MODE || 'unset',
+    /* The addresses blocks will actually pay, read off the live job rather
+       than echoed from config: the two can differ (nodeWallet resolves a new
+       one per template), and the dashboard's job is to show what is true.
+       Loopback-only API, and a receiving address is public anyway -- it is on
+       chain the moment it is paid. */
+    payoutAddresses: srv.jobs
+      ? [...srv.jobs.targets.values()].map((t) => ({
+          key: t.key,
+          kind: t.kind,
+          litecoin: t.current ? t.current.payoutAddress : (t.ltc ?? null),
+          dogecoin: t.current ? t.current.auxAddress : (t.doge ?? null),
+          isDefault: t.key === srv.jobs.defaultKey,
+        }))
+      : [],
     primaryChain: PRIMARY_CHAIN,
     scryptShift: Number(SCRYPT_SHIFT),
     hashesPerDiff1: HASHES_PER_DIFF1,
@@ -1777,16 +2001,40 @@ async function run() {
   }
 
   const auxAddr = process.env.AUX_PAYOUT_ADDRESS || null;
-  if (AUX_ENABLED && !auxAddr) {
-    throw new Error(
-      'AUX_RPC_HOST is set but AUX_PAYOUT_ADDRESS is not. Merge mining needs\n'
-      + 'somewhere for the aux chain to pay: its coinbase is built by its own\n'
-      + 'node, which refuses an address it cannot pay.');
+
+  /* nodeWallet carries NO addresses by design -- the action clears them, and
+     the point is that nothing is stored. Each template then asks the node
+     itself, so "a fresh address per block" is literally what happens rather
+     than a claim the architecture cannot keep. */
+  let defaultTarget;
+  if (mode === 'workerName') {
+    /* Distinct from 'unset'. The operator HAS chosen: they chose not to keep
+       their addresses here, and will send them in the worker name instead.
+       So the port binds and miners are served -- but only those that say
+       where to pay. */
+    defaultTarget = null;
+    log('no addresses stored; miners must authorize as LTC_ADDRESS,DOGE_ADDRESS.RIG');
+  } else if (mode === 'nodeWallet') {
+    defaultTarget = { kind: 'nodeWallet' };
+    log('paying into each node\u2019s own wallet; a fresh address per block');
+  } else {
+    if (!addr) {
+      throw new Error(
+        'PAYOUT_MODE=' + mode + ' but PAYOUT_ADDRESS is empty. Set an address,\n'
+        + 'or use PAYOUT_MODE=nodeWallet to pay into the nodes\u2019 own wallets.');
+    }
+    if (AUX_ENABLED && !auxAddr) {
+      throw new Error(
+        'AUX_RPC_HOST is set but AUX_PAYOUT_ADDRESS is not. Merge mining needs\n'
+        + 'somewhere for the aux chain to pay: its coinbase is built by its own\n'
+        + 'node, which refuses an address it cannot pay.');
+    }
+    defaultTarget = { kind: 'fixed', ltc: addr, doge: auxAddr };
   }
 
-  const jobs = new JobManager(addr, auxAddr);  // throws now if addr is malformed
+  const jobs = new JobManager(defaultTarget);  // throws now if addr is malformed
   await jobs.refresh();
-  log(`all blocks pay ${addr}`);
+  if (defaultTarget && defaultTarget.kind === 'fixed') log(`all blocks pay ${addr}`);
 
   const srv = new StratumServer({ port: Number(process.env.STRATUM_PORT || 3333), jobs });
   await srv.start();

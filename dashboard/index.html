@@ -307,9 +307,25 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       <div class="card">
         <div class="step"><div class="n">01</div><div>
           <div class="label">Payout destination</div>
-          <p class="hint">Set in this service’s StartOS settings, not here &mdash; so your addresses never travel over the wire in a worker name, and never hit the character limits some ASIC firmware chokes on.</p>
+          <p class="hint" id="cPayoutIntro"></p>
           <div id="cPayout" class="st" style="margin-top:10px">–</div>
           <p class="hint" id="cPayoutNote" style="margin-top:6px"></p>
+
+          <!-- read-only: what the server will actually pay -->
+          <div id="cPayoutShow" class="hidden" style="margin-top:10px">
+            <div class="out-row" style="padding:6px 0"><span class="label"><span class="algo-dot" style="background:var(--ltc)"></span> Litecoin</span><code id="cPayLtc" class="mono"></code></div>
+            <div class="out-row" style="padding:6px 0"><span class="label"><span class="algo-dot" style="background:var(--doge)"></span> Dogecoin</span><code id="cPayDoge" class="mono"></code></div>
+            <p class="hint" id="cPayShowNote" style="margin-top:8px"></p>
+          </div>
+
+          <!-- builder: addresses never leave this browser -->
+          <div id="cPayoutBuild" class="hidden" style="margin-top:10px">
+            <input type="text" id="cBuildLtc" placeholder="Litecoin address (L…, M… or ltc1…)" style="width:100%" autocomplete="off" spellcheck="false">
+            <div id="cBuildLtcErr" class="err-text hidden">That is not a Litecoin address.</div>
+            <input type="text" id="cBuildDoge" placeholder="Dogecoin address (D…, A… or 9…)" style="width:100%;margin-top:8px" autocomplete="off" spellcheck="false">
+            <div id="cBuildDogeErr" class="err-text hidden">That is not a Dogecoin address.</div>
+            <p class="hint" style="margin-top:8px">Typed here, these stay in <b>this browser only</b> &mdash; nothing is sent to the server, which is the point of this mode. They are built into the username below, which your miner sends when it connects.</p>
+          </div>
         </div></div>
         <div class="step"><div class="n">02</div><div>
           <div class="label">Worker name</div>
@@ -380,6 +396,12 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
      constant here reports a hashrate 65,536x off and makes every other number
      on the page nonsense. */
   const DIFF1 = { litecoin: 65536, dogecoin: 65536 };
+  /* Shape-only checks for the username builder: enough to catch a paste into
+     the wrong box, which is the realistic mistake. The stratum decodes both
+     properly and refuses the miner if either is wrong, so this is a courtesy
+     rather than the guarantee. */
+  const LTC_RE = /^(?:[LM][a-km-zA-HJ-NP-Z1-9]{25,34}|ltc1[02-9ac-hj-np-z]{10,87})$/;
+  const DOGE_RE = /^[DA9][a-km-zA-HJ-NP-Z1-9]{25,34}$/;
   const $ = (id) => document.getElementById(id);
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const store = {
@@ -540,6 +562,9 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     const summary = {
       chains, order: CHAINS, node, stratumOK: true, stratumPort: 3310,
       payoutMode: 'addresses', workerHint: 'awm7f3a.rig1', merged: true,
+      payoutAddresses: [{ key: 'demo', kind: 'fixed', isDefault: true,
+        litecoin: 'ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+        dogecoin: 'D8kR4qT2mVbN7wXyZ3cF5gH9jL1pQ6sU4v' }],
       hashrate: hs, hashrateErr: 0.07, uptimeSeconds: 86400 * 11,
     };
     return { summary, workers, blocks, history: hist, shares };
@@ -941,6 +966,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     $('cFixedBox').classList.toggle('hidden', cfg.diff !== 'fixed');
     const host = location.hostname || 'your-server.local';
     const sum = (state.data && state.data.summary) || {};
+    const mode = sum.payoutMode;
     $('oUrl').textContent = 'stratum+tcp://' + host + ':' + (PORT[cfg.chain] || PORT.litecoin || 3310);
     const worker = $('cWorker').value.trim().replace(/[^A-Za-z0-9_-]/g, '');
     /* The username is the account the stratum generated, never a payout
@@ -949,14 +975,24 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
        show a plausible-looking placeholder someone would paste into firmware. */
     const hint = String(sum.workerHint || '');
     const account = hint.split('.')[0];
-    $('oUser').textContent = account
-      ? account + '.' + (worker || hint.split('.').slice(1).join('.') || 'rig1')
-      : 'waiting for the stratum…';
+    if (mode === 'workerName') {
+      /* Assembled in the page and never sent anywhere: the miner is what
+         carries these to the stratum, which is the whole point of the mode. */
+      const bl = $('cBuildLtc').value.trim(), bd = $('cBuildDoge').value.trim();
+      $('cBuildLtcErr').classList.toggle('hidden', !bl || LTC_RE.test(bl));
+      $('cBuildDogeErr').classList.toggle('hidden', !bd || DOGE_RE.test(bd));
+      $('oUser').textContent = (LTC_RE.test(bl) && DOGE_RE.test(bd))
+        ? bl + ',' + bd + '.' + (worker || 'rig1')
+        : 'enter both addresses above';
+    } else {
+      $('oUser').textContent = account
+        ? account + '.' + (worker || hint.split('.').slice(1).join('.') || 'rig1')
+        : 'waiting for the stratum…';
+    }
 
     /* What the miner is actually paying into. 'unset' is not a cosmetic
        state: the stratum refuses to bind its port, so a rig pointed here
        will not connect at all. */
-    const mode = sum.payoutMode;
     /* Said without the other option in view, so it has to stand alone: in
        settings the two sit side by side and the contrast carries the meaning,
        here only one of them is ever shown. "Addresses you control" described
@@ -965,6 +1001,8 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     const payout = {
       addresses: ['addresses you saved',
         'Blocks pay straight to the Litecoin and Dogecoin addresses you entered in StartOS settings. The coins land in wallets you already hold, and nothing spendable sits on this server.'],
+      workerName: ['set per miner',
+        'Nothing is stored on this server. Each miner sends both of your addresses in its username, so they live only in your miners\u2019 own configuration. Fill in the two fields above and copy the username.'],
       nodeWallet: ['each node\u2019s own wallet',
         'Each block pays a fresh address generated by the node itself. Better privacy on chain \u2014 but those two wallet files become the only record of what you were paid, so back them up.'],
     }[mode];
@@ -972,6 +1010,34 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     $('cFeeNote').textContent = payout
       ? 'Rewards go 100% to your payout destination; there are no pool fees.'
       : 'There are no pool fees here \u2014 but nothing is set to be paid yet.';
+    /* Read-only path: show what will actually be paid. Worth a glance before
+       leaving a rig running for a year, and it is the one thing the settings
+       screen cannot show at the same time as the stratum address. */
+    const tgt = (sum.payoutAddresses || []).find((x) => x.isDefault)
+      || (sum.payoutAddresses || [])[0];
+    /* Only for the modes that HAVE a destination. In 'unset' the stratum is
+       not even running, so anything shown here would be a leftover. */
+    const showStored = Boolean(tgt && (tgt.litecoin || tgt.dogecoin)
+      && (mode === 'addresses' || mode === 'nodeWallet'));
+    $('cPayoutShow').classList.toggle('hidden', !showStored);
+    if (showStored) {
+      $('cPayLtc').textContent = tgt.litecoin || '–';
+      $('cPayDoge').textContent = tgt.dogecoin || '–';
+      /* Under nodeWallet these are this template's addresses, not settings:
+         they change on the next block, and saying so stops someone noting
+         one down as "my" address. */
+      $('cPayShowNote').innerHTML = mode === 'nodeWallet'
+        ? 'What the <b>next block</b> would pay \u2014 a new pair is taken from your nodes for every block, so these change. Both wallets hold them; neither is stored in this service.'
+        : 'To change these, open <b>Payouts</b> in this service\u2019s StartOS settings. They are deliberately not editable here, so nothing on this page can misdirect a block.';
+    }
+    $('cPayoutBuild').classList.toggle('hidden', mode !== 'workerName');
+    /* The intro has to follow the mode: the stored-addresses copy promises
+       that nothing travels in a worker name, which is exactly what the
+       opt-out mode does instead. */
+    $('cPayoutIntro').innerHTML = mode === 'workerName'
+      ? 'You chose not to store addresses on this server, so each miner carries them in its username. Two costs that come with that: the stratum is plaintext, so both addresses cross your network on every reconnect, and the username runs about 85 characters with a comma in it \u2014 which some Canaan and Avalon firmware refuses outright. If a miner will not take it, switch to storing them in StartOS settings.'
+      : 'Set in this service\u2019s StartOS settings, not here \u2014 so your addresses never travel over the wire in a worker name, and never hit the character limits some ASIC firmware chokes on.';
+
     $('cPayout').innerHTML = payout
       ? '<span class="dot ok"></span> ' + payout[0]
       : '<span class="dot warn"></span> not set';
@@ -1021,6 +1087,10 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   $('cWorker').value = store.get('c.worker', '');
   $('cWorker').addEventListener('input', () => { store.set('c.worker', $('cWorker').value.trim()); renderConnect() });
   $('cRate').addEventListener('input', renderConnect); $('cUnit').addEventListener('change', renderConnect);
+  /* Deliberately NOT persisted to localStorage, unlike the rig label: this
+     mode exists because the operator does not want their addresses stored,
+     and a browser is a place too. They are typed once per machine. */
+  ['cBuildLtc', 'cBuildDoge'].forEach((k) => $(k).addEventListener('input', renderConnect));
   document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     const text = $(b.dataset.copy).textContent;
     try { await navigator.clipboard.writeText(text); b.textContent = 'copied' } catch (e) {

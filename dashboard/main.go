@@ -134,11 +134,15 @@ type Summary struct {
 	StratumOK   bool        `json:"stratumOK"`
 	StratumPort int         `json:"stratumPort"`
 	PayoutMode  string      `json:"payoutMode"`
-	WorkerHint  string      `json:"workerHint"`
-	Merged      bool        `json:"merged"`
-	Hashrate    float64     `json:"hashrate"`
-	HashrateErr float64     `json:"hashrateErr"`
-	Uptime      int64       `json:"uptimeSeconds"`
+	// Passed through so the dashboard can show the operator what it will be
+	// paid to without them opening settings. A receiving address is public
+	// information; this API is loopback-only regardless.
+	PayoutAddresses []PayoutTarget `json:"payoutAddresses"`
+	WorkerHint      string         `json:"workerHint"`
+	Merged          bool           `json:"merged"`
+	Hashrate        float64        `json:"hashrate"`
+	HashrateErr     float64        `json:"hashrateErr"`
+	Uptime          int64          `json:"uptimeSeconds"`
 }
 
 // Best is the luckiest share ever submitted, per chain, kept permanently.
@@ -214,18 +218,31 @@ type statsBlock struct {
 	FoundAt int64  `json:"foundAt"`
 }
 
+// PayoutTarget is where one set of miners' blocks pay. More than one exists
+// only when a miner supplied its own addresses in its worker name.
+type PayoutTarget struct {
+	Key       string `json:"key"`
+	Kind      string `json:"kind"`
+	Litecoin  string `json:"litecoin"`
+	Dogecoin  string `json:"dogecoin"`
+	IsDefault bool   `json:"isDefault"`
+}
+
 type stratumStats struct {
-	OK         bool                `json:"ok"`
-	Now        int64               `json:"now"`
-	Uptime     int64               `json:"uptimeSeconds"`
-	PayoutMode string              `json:"payoutMode"`
-	Accounts   []statsAccount      `json:"accounts"`
-	Workers    []statsWorker       `json:"workers"`
-	Connected  []statsConnected    `json:"connected"`
-	Blocks     []statsBlock        `json:"blocks"`
-	Shares     []statsShare        `json:"shares"`
-	NetDiff    map[string]*float64 `json:"networkDifficulty"`
-	WindowMins int                 `json:"windowMinutes"`
+	OK         bool   `json:"ok"`
+	Now        int64  `json:"now"`
+	Uptime     int64  `json:"uptimeSeconds"`
+	PayoutMode string `json:"payoutMode"`
+	// Where blocks actually pay, read off the live job rather than echoed
+	// from config: under nodeWallet the address changes every template.
+	PayoutAddresses []PayoutTarget      `json:"payoutAddresses"`
+	Accounts        []statsAccount      `json:"accounts"`
+	Workers         []statsWorker       `json:"workers"`
+	Connected       []statsConnected    `json:"connected"`
+	Blocks          []statsBlock        `json:"blocks"`
+	Shares          []statsShare        `json:"shares"`
+	NetDiff         map[string]*float64 `json:"networkDifficulty"`
+	WindowMins      int                 `json:"windowMinutes"`
 }
 
 // ── collector ──────────────────────────────────────────────────────────────
@@ -246,6 +263,7 @@ type collector struct {
 	rpcs    []chainRPC
 	port    int
 	payout  string
+	targets []PayoutTarget
 	saving  sync.Mutex // one save at a time; two concurrent saves truncated a file once
 }
 
@@ -429,6 +447,7 @@ func (c *collector) poll() {
 	} else {
 		c.stats = &s
 		c.payout = s.PayoutMode
+		c.targets = s.PayoutAddresses
 	}
 	c.mu.Unlock()
 
@@ -669,12 +688,13 @@ func (c *collector) handleSummary(w http.ResponseWriter, r *http.Request) {
 	defer c.mu.RUnlock()
 
 	s := Summary{
-		Chains:      c.chains,
-		Order:       chainOrder,
-		StratumOK:   c.stats != nil,
-		StratumPort: c.port,
-		PayoutMode:  c.payout,
-		Merged:      true,
+		Chains:          c.chains,
+		Order:           chainOrder,
+		StratumOK:       c.stats != nil,
+		StratumPort:     c.port,
+		PayoutMode:      c.payout,
+		PayoutAddresses: c.targets,
+		Merged:          true,
 	}
 	if cs, ok := c.chains[parentChain]; ok {
 		s.Node = cs.Node

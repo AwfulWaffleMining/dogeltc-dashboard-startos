@@ -91,6 +91,10 @@ export const payoutConfig = sdk.Action.withInput(
           name: i18n("Pay into each node's own wallet"),
           spec: InputSpec.of({}),
         },
+        workerName: {
+          name: i18n('Do not store my addresses — I will send them per miner'),
+          spec: InputSpec.of({}),
+        },
       }),
     }),
   }),
@@ -134,6 +138,30 @@ export const payoutConfig = sdk.Action.withInput(
      * silently split their metering history in two. */
     const workerAccount =
       existing?.workerAccount || `awm${randomBytes(3).toString('hex')}`
+
+    if (sel === 'workerName') {
+      await storeJson.merge(effects, {
+        payoutMode: 'workerName',
+        /* Nothing stored -- that is the entire point of this choice. */
+        ltcAddress: '',
+        dogeAddress: '',
+        workerAccount,
+      })
+      return {
+        version: '1' as const,
+        title: i18n('Nothing stored — set each miner’s username'),
+        message: i18n(
+          'No address is kept on this server. Each miner must authorize with both of your addresses in its username, in this exact form, changing only the part after the dot per rig:\n\n    LITECOIN_ADDRESS,DOGECOIN_ADDRESS.rig1\n\nThe stratum checks both and refuses a miner whose addresses do not decode, so a typo is caught at connect rather than when a block is found. Two costs to know about: stratum is plaintext, so both addresses cross your network on every reconnect, and the username runs about 85 characters with a comma in it, which some Canaan and Avalon firmware will not accept. The dashboard builds the string for you under How to connect.',
+        ),
+        result: {
+          type: 'single' as const,
+          value: 'LITECOIN_ADDRESS,DOGECOIN_ADDRESS.rig1',
+          copyable: true,
+          masked: false,
+          qr: false,
+        },
+      }
+    }
 
     if (sel === 'nodeWallet') {
       await storeJson.merge(effects, {

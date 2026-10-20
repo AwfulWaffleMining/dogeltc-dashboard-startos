@@ -49,6 +49,9 @@ export default {
     27: 'Panel',
     28: 'El panel está listo',
     29: 'El panel está arrancando',
+    30: 'No guardar mis direcciones — las enviaré en cada minero',
+    31: 'No se guarda nada — configura el usuario de cada minero',
+    32: 'No se guarda ninguna dirección en este servidor. Cada minero debe autenticarse con tus dos direcciones en su nombre de usuario, exactamente en esta forma, cambiando solo la parte posterior al punto en cada equipo:\n\n    DIRECCION_LITECOIN,DIRECCION_DOGECOIN.rig1\n\nEl stratum comprueba ambas y rechaza a un minero cuyas direcciones no sean válidas, de modo que un error se detecta al conectar y no cuando se encuentra un bloque. Dos costes a tener en cuenta: stratum va en texto plano, así que ambas direcciones circulan por tu red en cada reconexión, y el usuario ocupa unos 85 caracteres e incluye una coma, algo que algunos firmwares de Canaan y Avalon no aceptan. El panel construye la cadena por ti en «Cómo conectar».',
   },
   de_DE: {
     0: 'Auszahlungen',
@@ -81,6 +84,9 @@ export default {
     27: 'Dashboard',
     28: 'Das Dashboard ist bereit',
     29: 'Das Dashboard startet',
+    30: 'Meine Adressen nicht speichern — ich sende sie pro Miner',
+    31: 'Nichts gespeichert — Benutzernamen je Miner setzen',
+    32: 'Auf diesem Server wird keine Adresse gespeichert. Jeder Miner muss sich mit beiden Adressen im Benutzernamen anmelden, genau in dieser Form, wobei nur der Teil nach dem Punkt je Gerät geändert wird:\n\n    LITECOIN_ADRESSE,DOGECOIN_ADRESSE.rig1\n\nDas Stratum prüft beide und weist einen Miner ab, dessen Adressen sich nicht dekodieren lassen — ein Tippfehler fällt also beim Verbinden auf und nicht erst, wenn ein Block gefunden wird. Zwei Nachteile: Stratum ist unverschlüsselt, beide Adressen gehen bei jeder Neuverbindung über dein Netz, und der Benutzername ist etwa 85 Zeichen lang und enthält ein Komma, was manche Canaan- und Avalon-Firmware ablehnt. Das Dashboard baut die Zeichenkette unter „Verbinden“ für dich.',
   },
   pl_PL: {
     0: 'Wypłaty',
@@ -113,6 +119,9 @@ export default {
     27: 'Panel',
     28: 'Panel jest gotowy',
     29: 'Panel się uruchamia',
+    30: 'Nie zapisuj moich adresów — wyślę je w każdej koparce',
+    31: 'Nic nie zapisano — ustaw nazwę użytkownika w każdej koparce',
+    32: 'Na tym serwerze nie jest przechowywany żaden adres. Każda koparka musi logować się, podając oba Twoje adresy w nazwie użytkownika, dokładnie w tej postaci, zmieniając tylko część po kropce dla każdego urządzenia:\n\n    ADRES_LITECOIN,ADRES_DOGECOIN.rig1\n\nStratum sprawdza oba i odrzuca koparkę, której adresy są nieprawidłowe, więc literówka wychodzi na jaw przy łączeniu, a nie dopiero po znalezieniu bloku. Dwa koszty: stratum działa otwartym tekstem, więc oba adresy przechodzą przez sieć przy każdym ponownym połączeniu, a nazwa użytkownika ma około 85 znaków i zawiera przecinek, czego część firmware’ów Canaan i Avalon nie akceptuje. Panel zbuduje ten ciąg za Ciebie w sekcji „Jak połączyć”.',
   },
   fr_FR: {
     0: 'Paiements',
@@ -145,5 +154,8 @@ export default {
     27: 'Tableau de bord',
     28: 'Le tableau de bord est prêt',
     29: 'Le tableau de bord démarre',
+    30: 'Ne pas enregistrer mes adresses — je les enverrai par mineur',
+    31: 'Rien n’est enregistré — définissez le nom d’utilisateur de chaque mineur',
+    32: 'Aucune adresse n’est conservée sur ce serveur. Chaque mineur doit s’authentifier avec vos deux adresses dans son nom d’utilisateur, exactement sous cette forme, en ne changeant que la partie après le point pour chaque machine :\n\n    ADRESSE_LITECOIN,ADRESSE_DOGECOIN.rig1\n\nLe stratum vérifie les deux et refuse un mineur dont les adresses ne sont pas valides : une faute de frappe est donc détectée à la connexion, et non le jour où un bloc est trouvé. Deux inconvénients : le stratum circule en clair, donc les deux adresses traversent votre réseau à chaque reconnexion, et le nom d’utilisateur fait environ 85 caractères et contient une virgule, ce que certains firmwares Canaan et Avalon refusent. Le tableau de bord construit la chaîne pour vous dans « Comment se connecter ».',
   },
 } satisfies Record<string, LangDict>

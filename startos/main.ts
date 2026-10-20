@@ -135,6 +135,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
         display: i18n('Stratum'),
         gracePeriod: 15_000,
         fn: async () => {
+          /* Only 'unset' holds the port closed. 'workerName' is a real
+           * choice -- store nothing, let each miner say where to pay -- so
+           * the stratum binds and this must report on the port like any
+           * other running mode. */
           if (payoutMode === 'unset') {
             return {
               result: 'starting' as const,

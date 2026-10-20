@@ -23,7 +23,9 @@ export const shape = z
      * becomes the one irreplaceable thing in the backup. A static configured
      * address is in fact the WORSE of the two for on-chain privacy, since
      * every block found links to it, while getnewaddress rotates. */
-    payoutMode: z.enum(['unset', 'addresses', 'nodeWallet']).catch('unset'),
+    payoutMode: z
+      .enum(['unset', 'addresses', 'nodeWallet', 'workerName'])
+      .catch('unset'),
 
     /* Only populated under payoutMode 'addresses'. Someone who picks
      * 'nodeWallet' has no address stored here at all — structurally, not by

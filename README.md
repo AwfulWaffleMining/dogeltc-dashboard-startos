@@ -58,11 +58,14 @@ One stratum port serves both chains. Merge mining is a single connection; a mine
 
 Payout addresses are config, never part of a worker name. That matters twice over: stratum v1 is plaintext, so the pool convention of `LTC_ADDRESS,DOGE_ADDRESS.RIG_ID` puts both addresses on the wire on every connect; and it is ~85 characters with a comma in it, which Canaan/Avalon firmware rejects outright.
 
-Payouts have three states, and `unset` is the shipped one:
+Payouts have four states, and `unset` is the shipped one:
 
 - **unset** — the stratum does *not* bind its port. A server that accepts miners and hands out work it cannot pay for is worse than one plainly off.
 - **addresses** — pays addresses the operator controls, off this server.
-- **nodeWallet** — a fresh address per block from each node's own wallet. Better on-chain privacy; the wallet files then become the only record of what you were paid.
+- **nodeWallet** — a genuinely fresh address per block: `JobManager` asks each node for one on every template, so the claim is literal rather than aspirational. Better on-chain privacy; the wallet files then become the only record of what you were paid.
+- **workerName** — nothing stored. Each miner authorizes as `LTC_ADDRESS,DOGE_ADDRESS.RIG` and gets its own job built around those addresses. A plain username is refused, because it has nowhere to pay. This binds the port: it is a choice, not an absence.
+
+**Jobs are keyed by payout target.** The coinbase pays the address and sits in the merkle root the miner hashes, so miners with different addresses need different jobs — but all of one person's rigs share a target, so the home case costs what a single-address server costs. Capped at 8 targets: the username is attacker-controlled on any reachable LAN, and each target costs an RPC per template on both chains.
 
 ## The data model
 
@@ -91,7 +94,15 @@ The full loop needs regtest nodes for both chains. Dogecoin refuses `getblocktem
 node stratum/scrypt-solo.mjs --selftest   # with AUX_RPC_HOST set: both chains
 ```
 
-That should advance **both** chains by one block from a single share.
+That should advance **both** chains by one block from a single share. The aux payout is resolved from the aux node when `AUX_PAYOUT_ADDRESS` is unset, so this needs no hand-set variables.
+
+To exercise the opt-out path instead — the server storing nothing, the miner supplying both addresses:
+
+```bash
+SELFTEST_PAYOUT_WORKER="$LTC_ADDR,$DOGE_ADDR.rig1" node stratum/scrypt-solo.mjs --selftest
+```
+
+The server then holds no address at all, so the assertion that the coinbase pays `$LTC_ADDR` can only pass if the username carried it into the block.
 
 ## Status
 
