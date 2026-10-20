@@ -20,5 +20,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-go-quai, which this package builds and runs, is licensed separately under the
-GNU General Public License v3.0: https://github.com/dominant-strategies/go-quai
+This package runs its own stratum server (stratum/scrypt-solo.mjs), which is
+covered by the MIT licence above. It does not build or redistribute Litecoin
+Core or Dogecoin Core; those are separate packages, licensed by their own
+projects under the MIT licence.
+
+The bundled fonts in dashboard/fonts -- Bai Jamjuree, Michroma and JetBrains
+Mono -- are licensed under the SIL Open Font License 1.1. See
+dashboard/fonts/LICENSE.txt.
