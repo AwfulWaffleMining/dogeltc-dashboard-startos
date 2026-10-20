@@ -6,7 +6,7 @@
 <!-- auto: fall back to demo data when the dashboard API is unreachable (previews).
      live: the StartOS package serves this with content="live" and never fakes data. -->
 <meta name="dash-mode" content="live">
-<title>Quai Solo Mining</title>
+<title>Scrypt Solo Mining</title>
 <style>
 @font-face{font-family:"Bai Jamjuree";src:url("fonts/BaiJamjuree-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:"Bai Jamjuree";src:url("fonts/BaiJamjuree-Medium.woff2") format("woff2");font-weight:500 700;font-style:normal;font-display:swap}
@@ -15,9 +15,9 @@
 :root{
   --bg:#f4f2ed;--panel:#ffffff;--panel-2:#f8f7f3;--line:#e3e0d8;--line-2:#d2cec4;
   --text:#0b0b0b;--muted:#5f5d57;--dim:#8f8c84;
-  --red:#e20101;--red-soft:rgba(226,1,1,.07);--red-line:rgba(226,1,1,.35);
+  --red:#c2a633;--red-soft:rgba(194,166,51,.09);--red-line:rgba(194,166,51,.40);
   --green:#138a43;--green-soft:rgba(19,138,67,.09);--amber:#b86e00;--amber-soft:rgba(184,110,0,.1);
-  --sha:#d98300;--scrypt:#0e9f8a;--kawpow:#e20101;
+  --ltc:#345d9d;--doge:#c2a633;
   --display:"Michroma","Bai Jamjuree",system-ui,sans-serif;
   --body:"Bai Jamjuree",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -25,16 +25,16 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#000000;--panel:#0a0a0a;--panel-2:#101010;--line:#1d1d1d;--line-2:#2b2b2b;
   --text:#f2f0eb;--muted:#9b9890;--dim:#5e5c57;
-  --red-soft:rgba(226,1,1,.09);--red-line:rgba(226,1,1,.45);
+  --red-soft:rgba(194,166,51,.10);--red-line:rgba(194,166,51,.45);
   --green:#2fd06f;--green-soft:rgba(47,208,111,.1);--amber:#f5a623;--amber-soft:rgba(245,166,35,.1);
-  --sha:#f5a623;--scrypt:#2dd4bf;--kawpow:#ff2a2a;
+  --ltc:#5b88cf;--doge:#e3c75a;
 }}
 :root[data-theme="dark"]{
   --bg:#000000;--panel:#0a0a0a;--panel-2:#101010;--line:#1d1d1d;--line-2:#2b2b2b;
   --text:#f2f0eb;--muted:#9b9890;--dim:#5e5c57;
-  --red-soft:rgba(226,1,1,.09);--red-line:rgba(226,1,1,.45);
+  --red-soft:rgba(194,166,51,.10);--red-line:rgba(194,166,51,.45);
   --green:#2fd06f;--green-soft:rgba(47,208,111,.1);--amber:#f5a623;--amber-soft:rgba(245,166,35,.1);
-  --sha:#f5a623;--scrypt:#2dd4bf;--kawpow:#ff2a2a;
+  --ltc:#5b88cf;--doge:#e3c75a;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;line-height:1.5}
@@ -125,7 +125,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
 .blk{flex:0 0 185px;border-radius:12px;border:1px solid var(--line-2);background:var(--panel-2);padding:12px 14px;position:relative;overflow:hidden}
 .blk::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--line-2)}
 .blk.block::before{background:var(--green)}
-.blk.workshare::before{background:var(--sha)}
+.blk.pending::before{background:var(--ltc)}
 .blk.unverified::before{background:var(--dim)}
 .blk.paid::before{background:var(--green)}
 .blk.orphaned::before{background:var(--dim)}
@@ -138,22 +138,22 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
 .blk .meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .blk .st{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
 .blk.block .st{color:var(--green)}
-.blk.workshare .st{color:var(--sha)}
+.blk.pending .st{color:var(--ltc)}
 .blk.unverified .st{color:var(--dim)}
 .meter{margin-top:10px}
 .meter .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:6px}
 .track{height:10px;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden;position:relative}
-.fill{height:100%;background:linear-gradient(90deg,var(--sha),var(--red))}
+.fill{height:100%;background:linear-gradient(90deg,var(--ltc),var(--red))}
 .mark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--text);opacity:.5}
 .mark span{position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:10px;color:var(--muted)}
 .hist{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:end;height:150px;margin-top:8px}
 .hist .col{display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:6px}
-.hist .b{background:var(--sha);opacity:.55;border-radius:4px 4px 0 0;min-height:2px}
+.hist .b{background:var(--ltc);opacity:.55;border-radius:4px 4px 0 0;min-height:2px}
 .hist .b.win{background:var(--green);opacity:.9}
 .hist .lab,.hist .n{font-family:var(--mono);font-size:10px;text-align:center;color:var(--muted)}
 .hist .n{color:var(--text);font-size:11px}
 .bar{position:relative;background:var(--panel-2);border-radius:4px;height:18px;min-width:90px}
-.bar i{position:absolute;inset:0 auto 0 0;border-radius:4px;background:var(--sha);opacity:.35}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:4px;background:var(--ltc);opacity:.35}
 .bar b{position:relative;font-family:var(--mono);font-size:11px;padding-left:7px;line-height:18px;font-weight:500}
 .bar b.hit{color:var(--green)}
 @media (max-width:640px){.big{font-size:22px}.out-row{grid-template-columns:1fr auto}.out-row .label{grid-column:1/-1}}
@@ -164,11 +164,11 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   <header class="top">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e20101" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-9 9"/><path d="M13 3c3 0 6 2 8 5-2-1-4-1-6 0"/><path d="M11 3C8 3 5 5 3 8c2-1 4-1 6 0"/><path d="M12 5l7 7"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" role="img"><title>Two chains, one hash</title><circle cx="9" cy="12" r="6.2" stroke="var(--doge)"/><circle cx="15" cy="12" r="6.2" stroke="var(--ltc)"/><path d="M12 6.4v11.2" stroke="var(--text)" opacity=".55"/></svg>
       </div>
       <div>
-        <h1>Quai <b>Solo</b> Mining</h1>
-        <div class="sub">go-quai stratum · your StartOS node</div>
+        <h1>Scrypt <b>Solo</b> Mining</h1>
+        <div class="sub">Dogecoin + Litecoin merge mining · your StartOS nodes</div>
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -218,7 +218,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
         <div class="kv"><span>stale <b id="kStale">0</b></span><span>invalid <b id="kInvalid">0</b></span><span id="kSince">–</span></div>
       </div>
       <div class="card">
-        <div class="label">Next workshare (estimate)</div>
+        <div class="label">Next block (estimate)</div>
         <div class="big" id="kEta">–</div>
         <div class="kv"><span>best share <b id="kBest">–</b></span><span>reward <b id="kReward">–</b></span></div>
       </div>
@@ -227,10 +227,9 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     <div class="card" style="margin-top:12px">
       <div class="card-h">
         <h2>Hashrate history</h2>
-        <div class="seg" id="histAlgo" style="margin-left:auto">
-          <button class="segb" data-algo="sha256" aria-pressed="true"><span class="algo-dot" style="background:var(--sha)"></span>SHA-256 <span class="cnt"></span></button>
-          <button class="segb" data-algo="scrypt" aria-pressed="false"><span class="algo-dot" style="background:var(--scrypt)"></span>Scrypt <span class="cnt"></span></button>
-          <button class="segb" data-algo="kawpow" aria-pressed="false"><span class="algo-dot" style="background:var(--kawpow)"></span>KawPoW <span class="cnt"></span></button>
+        <div class="seg" id="histChain" style="margin-left:auto">
+          <button class="segb" data-algo="litecoin" aria-pressed="true"><span class="algo-dot" style="background:var(--ltc)"></span>Litecoin <span class="cnt"></span></button>
+          <button class="segb" data-algo="dogecoin" aria-pressed="false"><span class="algo-dot" style="background:var(--doge)"></span>Dogecoin <span class="cnt"></span></button>
         </div>
         <div class="range" data-range-for="perf">
           <button data-range="1h" aria-pressed="false">1H</button>
@@ -245,11 +244,11 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     <div class="grid g2" style="margin-top:12px">
       <div class="card">
         <div class="card-h"><h2 id="topTitle">Top workers</h2><button class="copy" data-goto="workers">all workers</button></div>
-        <div class="tablewrap"><table><thead><tr><th>Worker</th><th>Algo</th><th class="num">Hashrate</th><th class="num">Last share</th></tr></thead><tbody id="topWorkers"></tbody></table></div>
+        <div class="tablewrap"><table><thead><tr><th>Worker</th><th class="num">Diff</th><th class="num">Hashrate</th><th class="num">Last share</th></tr></thead><tbody id="topWorkers"></tbody></table></div>
       </div>
       <div class="card">
-        <div class="card-h"><h2 id="recentTitle">Recent workshares</h2><button class="copy" data-goto="blocks">earnings</button></div>
-        <div class="tablewrap"><table><thead><tr><th>Height</th><th>Algo</th><th>Worker</th><th class="num">Found</th></tr></thead><tbody id="recentBlocks"></tbody></table></div>
+        <div class="card-h"><h2 id="recentTitle">Recent blocks</h2><button class="copy" data-goto="blocks">earnings</button></div>
+        <div class="tablewrap"><table><thead><tr><th>Height</th><th>Chain</th><th>Worker</th><th class="num">Found</th></tr></thead><tbody id="recentBlocks"></tbody></table></div>
       </div>
     </div>
   </section>
@@ -265,15 +264,14 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
         </div>
         <div class="range" id="workerAlgo">
           <button data-a="all" aria-pressed="true">All algos</button>
-          <button data-a="sha256" aria-pressed="false">SHA-256</button>
-          <button data-a="scrypt" aria-pressed="false">Scrypt</button>
-          <button data-a="kawpow" aria-pressed="false">KawPoW</button>
+          <button data-a="litecoin" aria-pressed="false">Litecoin</button>
+          <button data-a="dogecoin" aria-pressed="false">Dogecoin</button>
         </div>
         <input type="text" id="workerSearch" placeholder="Search worker or address" style="margin-left:auto;width:260px">
       </div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Worker</th><th>Address</th><th>Algo</th><th class="num">Hashrate</th><th class="num">24h avg</th><th class="num">Difficulty</th><th class="num">Reject</th><th class="num">Last share</th><th>Status</th></tr></thead>
+          <thead><tr><th>Worker</th><th>Account</th><th class="num">Diff</th><th class="num">Hashrate</th><th class="num">24h avg</th><th class="num">Difficulty</th><th class="num">Reject</th><th class="num">Last share</th><th>Status</th></tr></thead>
           <tbody id="workerRows"></tbody>
         </table>
       </div>
@@ -285,36 +283,36 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   <section id="tab-blocks" class="hidden">
     <div class="grid g4">
       <div class="card accent">
-        <div class="label">Workshares minted</div>
+        <div class="label">Blocks found</div>
         <div class="big" id="bShares">0</div>
         <div class="kv"><span id="bShareRate">–</span></div>
       </div>
       <div class="card">
-        <div class="label">Reward per workshare</div>
+        <div class="label">Block reward</div>
         <div class="big" id="bPerShare">–</div>
         <div class="kv"><span id="bPoolNote">a share of each block's reward pool</span></div>
       </div>
       <div class="card">
         <div class="label">Earned</div>
-        <div class="big" id="bEarned">0 <small>QUAI</small></div>
+        <div class="big" id="bEarned">0 <small>DOGE</small></div>
         <div class="kv"><span id="bEarnedSplit">–</span></div>
       </div>
       <div class="card">
         <div class="label">Best share</div>
         <div class="big" id="bBest">–</div>
-        <div class="kv"><span>of the workshare threshold</span></div>
+        <div class="kv"><span>of the network target</span></div>
       </div>
     </div>
 
     <div class="card" style="margin-top:12px">
-      <div class="card-h"><h2 id="railTitle">Your workshares</h2><span class="label" id="railNote"></span></div>
+      <div class="card-h"><h2 id="railTitle">Blocks you have found</h2><span class="label" id="railNote"></span></div>
       <div class="rail" id="blockRail"></div>
-      <p class="hint">Blocks on Quai are minted by KawPoW miners. SHA-256 and Scrypt hardware mints <b>workshares</b>: subsamples of hashrate that meet a lower threshold, get included in a block, and earn a share of that block's reward pool. Workshares are what make PoEM's finality work, which is why the protocol pays for them.</p>
+      <p class="hint">Every hash is tested against <b>both</b> networks at once. The stratum builds a Litecoin block whose coinbase commits to a Dogecoin block, so one scrypt solution can win on either chain &mdash; or both. Nothing is split and nothing is shared: this is one miner with two independent chances. Dogecoin's target is the easier of the two, so most wins land there first.</p>
     </div>
 
     <div class="grid g2" style="margin-top:12px">
       <div class="card">
-        <div class="card-h"><h2>Since your last workshare</h2><span class="label" id="dryAlgo"></span></div>
+        <div class="card-h"><h2>Since your last block</h2><span class="label" id="dryChain"></span></div>
         <div class="big" id="drySince">–</div>
         <div class="kv"><span>typical gap <b id="dryExpected">–</b></span></div>
         <div class="meter">
@@ -326,21 +324,10 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       <div class="card">
         <div class="card-h"><h2>How close shares get</h2><span class="label" id="histNote"></span></div>
         <div class="hist" id="histBars"></div>
-        <p class="hint">Most shares fall well short; the last bucket cleared the workshare threshold.</p>
+        <p class="hint">Most shares fall well short; the last bucket cleared the network target.</p>
       </div>
     </div>
 
-    <div class="card" style="margin-top:12px">
-      <div class="card-h">
-        <h2>By lock period</h2>
-        <span class="label" id="lockWindow">rolling 12 months</span>
-      </div>
-      <div class="grid g4" id="lockCards"></div>
-      <p class="hint">Set with the password when a miner connects: no <code>lock=</code> keeps rewards locked two weeks at the base rate; <code>lock=1</code>, <code>lock=2</code> and <code>lock=3</code> lock them for 3, 6 or 12 months and pay more. The boost is 3.5%, 10% and 25% in the first year, decaying to 0.218%, 0.625% and 1.562% from year five.</p>
-    </div>
-
-    <div class="card" style="margin-top:12px">
-      <div class="card-h"><h2>Best shares</h2><span class="label">closest to the threshold</span></div>
       <div class="tablewrap"><table><thead><tr><th>Worker</th><th>How close</th><th class="num">Share difficulty</th><th class="num">When</th></tr></thead><tbody id="bestShares"></tbody></table></div>
     </div>
   </section>
@@ -351,7 +338,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       <div class="card">
         <div class="step"><div class="n">01</div><div>
           <div class="label">Payout address</div>
-          <p class="hint">A Cyprus-1 Quai address (0x00…) or Qi mining address (0x0080…) from Pelagus. Blocks pay here.</p>
+          <p class="hint">Payout addresses are set in this service’s StartOS settings, not here &mdash; so they never travel over the wire in a worker name. Your worker name is shown below.</p>
           <input type="text" id="cAddr" placeholder="0x00…" style="width:100%;margin-top:8px" autocomplete="off" spellcheck="false">
           <div id="cAddrErr" class="err-text hidden">Enter a 0x address with 40 hexadecimal characters.</div>
         </div></div>
@@ -362,10 +349,8 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
         </div></div>
         <div class="step"><div class="n">03</div><div>
           <div class="label">Hardware</div>
-          <div class="opts" id="cAlgo">
-            <button class="opt" data-v="sha256" aria-pressed="true"><b>SHA-256</b>Bitaxe, NerdQAxe, Antminer S</button>
-            <button class="opt" data-v="scrypt" aria-pressed="false"><b>Scrypt</b>Antminer L, Goldshell</button>
-            <button class="opt" data-v="kawpow" aria-pressed="false"><b>KawPoW</b>GPUs</button>
+          <div class="opts" id="cChain">
+            <button class="opt" data-v="litecoin" aria-pressed="true"><b>Scrypt ASIC</b>Antminer L, Goldshell, Avalon Mini</button>
           </div>
         </div></div>
         <div class="step"><div class="n">04</div><div>
@@ -380,16 +365,6 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
             <span class="hint" id="cDiffHint" style="margin:0">about one share every 30 seconds</span>
           </div>
         </div></div>
-        <div class="step"><div class="n">05</div><div>
-          <div class="label">Lock rewards (optional)</div>
-          <p class="hint">Longer locks earn a boost on block rewards. Boosts shown are year-one rates and step down each year.</p>
-          <div class="opts" id="cLock">
-            <button class="opt" data-v="0" aria-pressed="true"><b>No lock</b>2 weeks · base</button>
-            <button class="opt" data-v="1" aria-pressed="false"><b>3 months</b>+3.5%</button>
-            <button class="opt" data-v="2" aria-pressed="false"><b>6 months</b>+10%</button>
-            <button class="opt" data-v="3" aria-pressed="false"><b>12 months</b>+25%</button>
-          </div>
-        </div></div>
       </div>
       <div>
         <div class="card accent" style="position:sticky;top:12px">
@@ -402,9 +377,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
           </div>
           <p class="hint" style="margin-top:12px">Use the server's LAN address shown in StartOS if this page was opened through another address. Rewards go 100% to the payout address; there are no pool fees.</p>
           <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px">
-            <div class="card" style="padding:10px 12px"><div class="label">SHA-256</div><div class="mono" id="pSha">–</div></div>
-            <div class="card" style="padding:10px 12px"><div class="label">Scrypt</div><div class="mono" id="pScrypt">–</div></div>
-            <div class="card" style="padding:10px 12px"><div class="label">KawPoW</div><div class="mono" id="pKawpow">–</div></div>
+            <div style="margin-top:12px"><div class="label">Stratum port</div><div class="mono" id="pStratum">–</div></div>
           </div>
         </div>
       </div>
@@ -412,7 +385,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   </section>
 
   <footer>
-    <span>Community StartOS package · not affiliated with Quai Network or Dominant Strategies</span>
+    <span>Community StartOS package · not affiliated with the Dogecoin or Litecoin projects</span>
     <span id="updated">–</span>
   </footer>
 </div>
@@ -421,24 +394,28 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
 (function () {
   'use strict';
   const MODE = (document.querySelector('meta[name="dash-mode"]') || {}).content || 'auto';
-  // Quai Network points people at explorer.qu.ai rather than quaiscan, which
+  // Block explorers for each chain, which
   // may not stay up. Both are Blockscout, so the /tx/ and /address/ paths match;
   // this is the only place the explorer is named.
   const EXPLORER = 'https://explorer.qu.ai';
-  const ALGOS = ['sha256', 'scrypt', 'kawpow'];
-  const ALGO_NAME = { sha256: 'SHA-256', scrypt: 'Scrypt', kawpow: 'KawPoW' };
-  const ALGO_VAR = { sha256: '--sha', scrypt: '--scrypt', kawpow: '--kawpow' };
+  const CHAINS = ['litecoin', 'dogecoin'];
+  const CHAIN_NAME = { litecoin: 'Litecoin', dogecoin: 'Dogecoin' };
+  const CHAIN_TICKER = { litecoin: 'LTC', dogecoin: 'DOGE' };
+  const CHAIN_VAR = { litecoin: '--ltc', dogecoin: '--doge' };
   // Fallbacks only: StartOS assigns the external ports, and dash/summary reports
   // the ones actually in use (they differ whenever another package took one).
-  const PORT_DEFAULT = { sha256: 3333, scrypt: 3334, kawpow: 3335 };
+  // One stratum serving both chains: merge mining is a single connection.
+  const PORT_DEFAULT = { litecoin: 3310, dogecoin: 3310 };
   let PORT = Object.assign({}, PORT_DEFAULT);
-  // stratum difficulty 1 = 2^32 hashes for SHA-256/KawPoW, 2^16 for Scrypt (go-quai stratum)
-  const DIFF1 = { sha256: 4294967296, scrypt: 65536, kawpow: 4294967296 };
+  /* Scrypt difficulty 1 is 2^16 hashes, NOT Bitcoin's 2^32. Using the wrong
+     constant here reports a hashrate 65,536x off and makes every other number
+     on the page nonsense. */
+  const DIFF1 = { litecoin: 65536, dogecoin: 65536 };
   const $ = (id) => document.getElementById(id);
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const store = {
-    get(k, d) { try { const v = localStorage.getItem('quaidash.' + k); return v === null ? d : v } catch (e) { return d } },
-    set(k, v) { try { localStorage.setItem('quaidash.' + k, v) } catch (e) {} },
+    get(k, d) { try { const v = localStorage.getItem('scryptdash.' + k); return v === null ? d : v } catch (e) { return d } },
+    set(k, v) { try { localStorage.setItem('scryptdash.' + k, v) } catch (e) {} },
   };
 
   // "This session" means since this page was opened, which is what a miner
@@ -464,8 +441,8 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   }
 
   // Dashboard shows one algorithm at a time: hashrates of different algorithms are not comparable units.
-  const savedAlgo = store.get('algo', '');
-  const state = { tab: 'dashboard', algo: ALGOS.includes(savedAlgo) ? savedAlgo : '', perfRange: '24h', shareRange: '1h', wFilter: 'all', wAlgo: 'all', demo: false, data: null };
+  const savedChain = store.get('algo', '');
+  const state = { tab: 'dashboard', chain: CHAINS.includes(savedChain) ? savedChain : '', perfRange: '24h', shareRange: '1h', wFilter: 'all', wChain: 'all', demo: false, data: null };
 
   // ── formatting ──────────────────────────────────────────────────────────
   const UNITS = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
@@ -511,8 +488,11 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   const pct = (x, d = 2) => isFinite(x) ? x.toFixed(d) + '%' : '–';
   // Percentages stop being readable past a few hundred: 21913.4% is 219x.
   const luckStr = (x) => !isFinite(x) || x <= 0 ? '–' : x >= 1000 ? (x / 100).toFixed(0) + 'x' : pct(x, x >= 10 ? 1 : 2);
-  const algoBadge = (a) => '<span class="badge" style="color:var(' + ALGO_VAR[a] + ')">' + (ALGO_NAME[a] || esc(a)) + '</span>';
-  const activeCount = (k) => state.data ? state.data.workers.filter((w) => w.algorithm === k && w.status === 'active').length : 0;
+  const chainBadge = (a) => '<span class="badge" style="color:var(' + CHAIN_VAR[a] + ')">' + (CHAIN_NAME[a] || esc(a)) + '</span>';
+  /* Every worker mines BOTH chains -- that is what merge mining is -- so
+     this is not filtered by chain. The count is the same under either tab,
+     and showing a worker only under one would be a lie about what it does. */
+  const activeCount = () => state.data ? state.data.workers.filter((w) => w.status === 'active').length : 0;
 
   // ── data ────────────────────────────────────────────────────────────────
   async function getJSON(path) {
@@ -528,77 +508,91 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     return { summary, workers, blocks, history, shares };
   }
 
-  // Deterministic-ish generated data for previews (clearly labeled on screen).
+  /* Deterministic generated data for previews, clearly labelled on screen.
+   *
+   * Figures are chosen to be realistic for a small scrypt rig rather than
+   * flattering: ~6.6 GH/s against networks of a few PH/s, no blocks found on
+   * Litecoin, one on Dogecoin. Showing a preview where the lottery has
+   * already paid out would misrepresent what this does. */
   function demoData() {
     const now = Date.now();
     let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const workers = [
-      ['octaxe-01', 'sha256', 10.8e12], ['nerdqaxe-02', 'sha256', 5.25e12], ['nerdqaxe-03', 'sha256', 5.19e12],
-      ['nerdqaxe-04', 'sha256', 5.08e12], ['bitaxe-garage', 'sha256', 0], ['l7-basement', 'scrypt', 9.05e9], ['rig-3090', 'kawpow', 58e6],
-    ].map(([name, algo, h], i) => ({
-      address: '0x0061088185Da048AfF78B5eda5135a4964B83a78', workerName: name, algorithm: algo, hashrate: h,
-      avg24h: h ? h * (0.95 + rnd() * 0.04) : h * 0 + (algo === 'sha256' ? 1.1e12 : 0),
-      difficulty: algo === 'scrypt' ? 262144 : algo === 'kawpow' ? 0.5 : 2048,
-      sharesValid: Math.round(900 + rnd() * 3000), sharesStale: Math.round(rnd() * 3), sharesInvalid: i === 6 ? 2 : 0,
-      lastShareAt: new Date(now - (h ? rnd() * 50000 : 3.2 * 3600e3)).toISOString(), status: h ? 'active' : 'offline',
+      ['avalon-mini3-01', 2.23e9], ['avalon-mini3-02', 2.21e9],
+      ['avalon-mini3-03', 2.19e9], ['l7-basement', 0],
+    ].map(([name, h], i) => ({
+      workerName: 'awm7f3a.' + name, account: 'awm7f3a', rig: name,
+      hashrate: h, hashrateErr: h ? 0.08 : 0, difficulty: h ? 1048576 : 0,
+      sharesValid: Math.round(900 + rnd() * 3000), sharesStale: Math.round(rnd() * 3),
+      billable: Math.round(9e8 + rnd() * 4e8),
+      lastShareAt: new Date(now - (h ? rnd() * 50000 : 3.2 * 3600e3)).toISOString(),
+      status: h ? 'active' : 'offline',
     }));
-    const algoHash = { sha256: 0, scrypt: 0, kawpow: 0 };
-    workers.forEach((w) => { algoHash[w.algorithm] += w.hashrate });
-    const hist = { sha256: [], scrypt: [], kawpow: [] };
+    /* ONE hashrate, shared. Both chains see the same work -- that is what
+       merge mining is, and a preview that showed two different numbers would
+       teach the wrong thing. */
+    const hs = workers.reduce((a, w) => a + w.hashrate, 0);
+
+    const hist = {}; CHAINS.forEach((c) => (hist[c] = []));
     const span = { '1h': 3600e3, '24h': 86400e3, '7d': 7 * 86400e3 }[state.perfRange];
     const N = 180;
     for (let k = 0; k <= N; k++) {
       const t = now - span + (span * k) / N;
-      ALGOS.forEach((a) => {
-        const base = algoHash[a] || 0; const wob = 1 + 0.04 * Math.sin(k / 9 + a.length) + (rnd() - 0.5) * 0.05;
-        hist[a].push([t, Math.max(0, base * wob), Math.max(0, (rnd() - 0.8) * 0.4)]);
-      });
+      const wob = 1 + 0.04 * Math.sin(k / 9) + (rnd() - 0.5) * 0.05;
+      CHAINS.forEach((c) => hist[c].push([t, Math.max(0, hs * wob), Math.max(0, (rnd() - 0.85) * 0.4)]));
     }
-    const threshold = { sha256: 38e6, scrypt: 1.2e9, kawpow: 250 };
-    const shares = { sha256: [], scrypt: [], kawpow: [] };
-    const sspan = { '1h': 3600e3, '24h': 86400e3, '7d': 7 * 86400e3 }[state.shareRange];
-    ALGOS.forEach((a) => {
-      const med = { sha256: 900e3, scrypt: 30e6, kawpow: 6 }[a];
-      for (let k = 0; k < (a === 'sha256' ? 150 : 45); k++) {
-        const d = med * Math.exp((rnd() - 0.55) * 4.2);
-        shares[a].push({ t: now - rnd() * sspan, diff: d, threshold: threshold[a], isBlock: false });
+
+    const shares = {}; const sspan = { '1h': 3600e3, '24h': 86400e3, '7d': 7 * 86400e3 }[state.shareRange];
+    CHAINS.forEach((c) => {
+      shares[c] = [];
+      for (let k = 0; k < 60; k++) {
+        const d = 1048576 * Math.exp((rnd() - 0.55) * 4.2);
+        shares[c].push({ t: now - rnd() * sspan, diff: d, threshold: 2.4e13, isBlock: false });
       }
     });
-    shares.sha256.push({ t: now - sspan * 0.35, diff: threshold.sha256 * 1.3, threshold: threshold.sha256, isBlock: true });
+
     const blocks = [
-      { height: 10147201, hash: '0x00000a8f3e2c7d1b9a6e5f4c3b2a1908f7e6d5c4b3a29180f7e6d5c4b3a2918f', worker: 'octaxe-01', algorithm: 'sha256', foundAt: new Date(now - sspan * 0.35).toISOString(), estReward: 1.94 },
-      { height: 10139877, hash: '0x00000c41d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3', worker: 'nerdqaxe-03', algorithm: 'sha256', foundAt: new Date(now - 9.6 * 3600e3).toISOString(), estReward: 1.87 },
-      { height: 10088410, hash: '0x000003b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9', worker: 'l7-basement', algorithm: 'scrypt', foundAt: new Date(now - 3.1 * 86400e3).toISOString(), estReward: 2.02 },
+      { chain: 'dogecoin', height: 6423259, worker: 'awm7f3a.avalon-mini3-01',
+        address: 'D8kR4qT2mVbN7wXyZ3cF5gH9jL1pQ6sU4v',
+        foundAt: new Date(now - 6.2 * 86400e3).toISOString(),
+        reward: 10000, confirmations: 8930, mature: true, orphaned: false },
     ];
+
+    const node = { reachable: true, synced: true, height: 3198542, tip: 3198542, behind: 0 };
+    const chains = {
+      litecoin: { hashrate: hs, hashrateErr: 0.07, difficulty: 38500000, netHashrate: 2.64e15,
+        blockReward: 6.25, blockSeconds: 150, blocksFound: 0, node,
+        expectedDays: 694, oddsPerYear: 0.41, sharesValid: 7420, sharesStale: 6, bestLuck: 18.7 },
+      dogecoin: { hashrate: hs, hashrateErr: 0.07, difficulty: 38500000, netHashrate: 2.625e15,
+        blockReward: 10000, blockSeconds: 60, blocksFound: 1,
+        node: { reachable: true, synced: true, height: 6423259, tip: 6423259, behind: 0 },
+        expectedDays: 276, oddsPerYear: 0.74, sharesValid: 7420, sharesStale: 6, bestLuck: 41.2 },
+    };
     const summary = {
-      node: { synced: true, height: 10147852, tip: 10147852, behind: 0 },
-      mining: { estimatedBlockReward: 1.9, workshareReward: 1.9, avgBlockTime: 4.8 },
-      algos: {
-        sha256: { hashrate: algoHash.sha256, workshareDiff: threshold.sha256, sharesValid: 11840, sharesStale: 4, sharesInvalid: 0, bestLuck: 41.2, avgLuck: 2.4 },
-        scrypt: { hashrate: algoHash.scrypt, workshareDiff: threshold.scrypt, sharesValid: 2230, sharesStale: 1, sharesInvalid: 0, bestLuck: 18.7, avgLuck: 3.1 },
-        kawpow: { hashrate: algoHash.kawpow, workshareDiff: threshold.kawpow, sharesValid: 610, sharesStale: 0, sharesInvalid: 2, bestLuck: 9.4, avgLuck: 2.2 },
-      },
+      chains, order: CHAINS, node, stratumOK: true, stratumPort: 3310,
+      payoutMode: 'addresses', workerHint: 'awm7f3a.rig1', merged: true,
+      hashrate: hs, hashrateErr: 0.07, uptimeSeconds: 86400 * 11,
     };
     return { summary, workers, blocks, history: hist, shares };
   }
 
   function normalize(d) {
     // One bad field must not take down the whole page: every consumer below
-    // assumes arrays, so guarantee them here. (go-quai's collector returns an
+    // assumes arrays, so guarantee them here. (the collector returns an
     // empty JSON list, but a nil slice from any source serializes as null.)
     d.workers = Array.isArray(d.workers) ? d.workers : [];
     d.blocks = Array.isArray(d.blocks) ? d.blocks : [];
     d.history = d.history || {};
     d.shares = d.shares || {};
     d.summary = d.summary || {};
-    d.summary.algos = d.summary.algos || {};
+    d.summary.chains = d.summary.chains || {};
     if (d.summary.stratumPorts) {
-      ALGOS.forEach((k) => {
+      CHAINS.forEach((k) => {
         const p = Number(d.summary.stratumPorts[k]);
         if (p > 0) PORT[k] = p;
       });
     }
-    ALGOS.forEach((k) => {
+    CHAINS.forEach((k) => {
       if (!Array.isArray(d.history[k])) d.history[k] = [];
       if (!Array.isArray(d.shares[k])) d.shares[k] = [];
     });
@@ -652,9 +646,9 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     } else {
       $('syncBanner').querySelector('.t').textContent = 'Node syncing';
     }
-    if (!state.algo) {
+    if (!state.chain) {
       // default: the algorithm with the most active miners
-      state.algo = ALGOS.slice().sort((x, y) => activeCount(y) - activeCount(x))[0];
+      state.chain = CHAINS[0];
     }
     // Render each tab independently: a failure in one must not blank the rest.
     for (const [name, fn] of [['dashboard', renderDashboard], ['workers', renderWorkers], ['blocks', renderBlocks], ['connect', renderConnect]]) {
@@ -667,12 +661,12 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   }
 
   function renderDashboard() {
-    const d = state.data; const k = state.algo; const a = d.summary.algos[k] || {};
-    document.querySelectorAll('#histAlgo .segb').forEach((b) => {
+    const d = state.data; const k = state.chain; const a = d.summary.chains[k] || {};
+    document.querySelectorAll('#histChain .segb').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.algo === k));
-      const n = activeCount(b.dataset.algo); b.querySelector('.cnt').textContent = n ? '\u00b7 ' + n : '';
+      const n = activeCount(); b.querySelector('.cnt').textContent = n ? '\u00b7 ' + n : '';
     });
-    const ws = d.workers.filter((w) => w.algorithm === k);
+    const ws = d.workers;
     const active = ws.filter((w) => w.status === 'active');
     const avg = ws.reduce((s, w) => s + (w.avg24h || 0), 0);
     const sess = sessionCounts(k, a);
@@ -688,27 +682,34 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     $('kStale').textContent = fmtNum(stale);
     $('kInvalid').textContent = fmtNum(invalid);
     $('kSince').textContent = 'over ' + dur((Date.now() - session.start) / 1000);
-    const rate = a.hashrate > 0 && a.workshareDiff > 0 ? a.hashrate / (a.workshareDiff * DIFF1[k]) : 0;
-    $('kEta').textContent = rate > 0 ? '~' + dur(1 / rate) : '–';
+    /* Expected time to a block, computed server-side from this hashrate
+       against the live network figure. Zero means no rate yet, which prints
+       as a dash rather than an invented number. */
+    $('kEta').textContent = a.expectedDays > 0 ? '~' + dur(a.expectedDays * 86400) : '–';
     $('kBest').textContent = luckStr(a.bestLuck);
-    const rw = (d.summary.mining || {}).estimatedBlockReward;
-    $('kReward').textContent = rw ? '~' + rw.toFixed(2) + ' QUAI' : '–';
+    /* Decimals matter here: Litecoin's subsidy is 6.25, and rounding it to
+       6 understates every block by 4%. Dogecoin's 10,000 wants separators
+       and no decimals, so format by magnitude rather than with one rule. */
+    $('kReward').textContent = a.blockReward
+      ? (a.blockReward >= 1000 ? fmtNum(a.blockReward) : String(a.blockReward))
+        + ' ' + (CHAIN_TICKER[k] || '')
+      : '–';
 
     drawPerf();
 
-    $('topTitle').textContent = 'Top ' + ALGO_NAME[k] + ' workers';
-    $('recentTitle').textContent = 'Recent ' + ALGO_NAME[k] + ' workshares';
+    $('topTitle').textContent = 'Top ' + CHAIN_NAME[k] + ' workers';
+    $('recentTitle').textContent = 'Recent ' + CHAIN_NAME[k] + ' blocks';
     const top = ws.slice().sort((x, y) => y.hashrate - x.hashrate).slice(0, 6);
-    $('topWorkers').innerHTML = top.length ? top.map((w) => '<tr><td>' + esc(w.workerName || 'default') + '</td><td>' + algoBadge(w.algorithm) + '</td><td class="num">' + hashStr(w.hashrate) + '</td><td class="num">' + ago(w.lastShareAt) + '</td></tr>').join('')
-      : '<tr><td colspan="4" class="empty">No ' + ALGO_NAME[k] + ' miners yet. Open How to connect to point one here.</td></tr>';
-    const bl = d.blocks.filter((b) => b.algorithm === k).slice(0, 5);
-    $('recentBlocks').innerHTML = bl.length ? bl.map((b) => '<tr><td class="mono">#' + fmtNum(b.height) + '</td><td>' + algoBadge(b.algorithm) + '</td><td>' + esc(b.worker) + '</td><td class="num">' + ago(b.foundAt) + '</td></tr>').join('')
-      : '<tr><td colspan="4" class="empty">No ' + ALGO_NAME[k] + ' workshares yet. Keep hashing.</td></tr>';
+    $('topWorkers').innerHTML = top.length ? top.map((w) => '<tr><td>' + esc(w.workerName || 'default') + '</td><td class="num mono">' + fmtNum(w.difficulty || 0) + '</td><td class="num">' + hashStr(w.hashrate) + '</td><td class="num">' + ago(w.lastShareAt) + '</td></tr>').join('')
+      : '<tr><td colspan="4" class="empty">No miners yet. Open How to connect to point one here.</td></tr>';
+    const bl = d.blocks.filter((b) => b.chain === k).slice(0, 5);
+    $('recentBlocks').innerHTML = bl.length ? bl.map((b) => '<tr><td class="mono">#' + fmtNum(b.height) + '</td><td>' + chainBadge(b.chain) + '</td><td>' + esc(b.worker) + '</td><td class="num">' + ago(b.foundAt) + '</td></tr>').join('')
+      : '<tr><td colspan="4" class="empty">No ' + CHAIN_NAME[k] + ' blocks yet. Keep hashing.</td></tr>';
   }
 
   function renderWorkers() {
     const q = $('workerSearch').value.trim().toLowerCase();
-    const all = state.data.workers.filter((w) => state.wAlgo === 'all' || w.algorithm === state.wAlgo);
+    const all = state.data.workers;
     $('cAll').textContent = all.length;
     $('cActive').textContent = all.filter((w) => w.status === 'active').length;
     $('cOffline').textContent = all.filter((w) => w.status !== 'active').length;
@@ -719,51 +720,50 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       const t = w.sharesValid + w.sharesStale + w.sharesInvalid;
       const rej = t ? (100 * (w.sharesStale + w.sharesInvalid)) / t : 0;
       const st = w.status === 'active' ? '<span class="st" style="color:var(--green)"><span class="dot ok"></span>active</span>' : '<span class="st" style="color:var(--amber)"><span class="dot warn"></span>offline</span>';
-      return '<tr><td>' + esc(w.workerName || 'default') + '</td><td class="mono" title="' + esc(w.address) + '">' + esc(short(w.address)) + '</td><td>' + algoBadge(w.algorithm) + '</td><td class="num">' + hashStr(w.hashrate) + '</td><td class="num">' + hashStr(w.avg24h || 0) + '</td><td class="num">' + fmtCompact(w.difficulty || 0) + '</td><td class="num">' + pct(rej) + '</td><td class="num">' + ago(w.lastShareAt) + '</td><td>' + st + '</td></tr>';
+      return '<tr><td>' + esc(w.workerName || 'default') + '</td><td class="mono" title="' + esc(w.address) + '">' + esc(short(w.address)) + '</td><td>' + chainBadge(w.algorithm) + '</td><td class="num">' + hashStr(w.hashrate) + '</td><td class="num">' + hashStr(w.avg24h || 0) + '</td><td class="num">' + fmtCompact(w.difficulty || 0) + '</td><td class="num">' + pct(rej) + '</td><td class="num">' + ago(w.lastShareAt) + '</td><td>' + st + '</td></tr>';
     }).join('') : '<tr><td colspan="9" class="empty">No workers match.</td></tr>';
   }
 
   function renderBlocks() {
     const d = state.data;
-    const items = d.blocks;
-    const blocks = items.filter((b) => b.kind === 'block');
-    const shares = items.filter((b) => b.kind !== 'block');
-    const m = d.summary.mining || {};
+    const items = d.blocks || [];
+    const ck = state.chain;
+    const mine = items.filter((b) => b.chain === ck);
+    const live = mine.filter((b) => !b.orphaned);
+    const mature = live.filter((b) => b.mature);
+    const orphanCount = mine.length - live.length;
+    const chainSum = d.summary.chains[ck] || {};
+    const ticker = CHAIN_TICKER[ck] || '';
 
-    $('bShares').textContent = fmtNum(shares.length + blocks.length);
-    $('bPerShare').innerHTML = m.workshareReward
-      ? esc(m.workshareReward.toFixed(2)) + '<small>QUAI</small>'
+    $('bShares').textContent = fmtNum(live.length);
+    $('bPerShare').innerHTML = chainSum.blockReward
+      ? (chainSum.blockReward >= 1000 ? fmtNum(chainSum.blockReward) : String(chainSum.blockReward))
+        + '<small>' + esc(ticker) + '</small>'
       : '–';
-    $('bPoolNote').textContent = m.estimatedBlockReward
-      ? 'one of ' + Math.round(m.estimatedBlockReward / Math.max(1e-9, m.workshareReward)) + ' slots in a ' + m.estimatedBlockReward.toFixed(0) + ' QUAI pool'
-      : "a share of each block's reward pool";
-    const orphanCount = items.filter((b) => !(b.paidReward > 0) && b.payoutState === 'orphaned').length;
-    const earned = items.reduce(
-      (s, b) => s + (b.paidReward || (b.payoutState === 'orphaned' ? 0 : b.estReward) || 0),
-      0,
-    );
-    const settled = items.filter((b) => b.paidReward > 0).length;
-    $('bEarned').innerHTML = esc(earned.toFixed(2)) + '<small>QUAI</small>';
-    $('bEarnedSplit').innerHTML = settled
-      ? '<b>' + settled + '</b> of ' + items.length + ' confirmed' + (orphanCount ? ' · <b>' + orphanCount + '</b> not rewarded' : '')
-      : m.workshareReward
-        ? 'at <b>' + m.workshareReward.toFixed(2) + '</b> QUAI per workshare'
-        : 'reward figures need the node RPC';
+    $('bPoolNote').textContent = 'paid in full to you, straight from the coinbase';
 
-    // rate of workshares, measured against what this hashrate should produce
-    const k = state.algo;
-    const a = d.summary.algos[k] || {};
-    const netH = (m.netHashrate || {})[k] || 0;
-    const netDiff = (m.netDifficulty || {})[k] || 0; // hashes per workshare on this algo
-    const shareEvery = (m.avgShareTime || {})[k] || 0;
-    let expectedGap = 0;
-    if (netDiff > 0 && a.hashrate > 0) {
-      expectedGap = netDiff / a.hashrate; // direct: your hashes needed / your rate
-    } else if (netH > 0 && a.hashrate > 0 && shareEvery > 0) {
-      expectedGap = shareEvery * (netH / a.hashrate); // fallback when difficulty is missing
-    }
-    $('dryAlgo').textContent = ALGO_NAME[k];
-    const last = shares.length ? new Date(shares[0].foundAt).getTime() : 0;
+    /* Found and spendable are different states. A coinbase is locked for 100
+       confirmations, so counting an immature block as money would overstate
+       what you actually have. */
+    const earned = mature.length * (chainSum.blockReward || 0);
+    const pending = (live.length - mature.length) * (chainSum.blockReward || 0);
+    $('bEarned').innerHTML = esc(fmtNum(earned)) + '<small>' + esc(ticker) + '</small>';
+    $('bEarnedSplit').innerHTML = live.length
+      ? '<b>' + mature.length + '</b> of ' + live.length + ' matured'
+        + (pending > 0 ? ' · <b>' + fmtNum(pending) + '</b> ' + esc(ticker) + ' still locked' : '')
+        + (orphanCount ? ' · <b>' + orphanCount + '</b> orphaned' : '')
+      : 'nothing found yet \u2014 at solo odds that is the normal state';
+
+    // expected gap between blocks, from the collector's own arithmetic
+    const k = state.chain;
+    const a = d.summary.chains[k] || {};
+    /* Expected seconds between blocks ON THIS CHAIN. The collector already
+       works this out from your share of the network and that chain's block
+       time, so it is read rather than re-derived -- two implementations of
+       the same arithmetic is two chances to disagree on screen. */
+    const expectedGap = a.expectedDays > 0 ? a.expectedDays * 86400 : 0;
+    $('dryChain').textContent = CHAIN_NAME[k];
+    const last = live.length ? new Date(live[0].foundAt).getTime() : 0;
     const since = last ? (Date.now() - last) / 1000 : 0;
     $('drySince').textContent = last ? dur(since) : '–';
     $('dryExpected').textContent = expectedGap ? dur(expectedGap) : '–';
@@ -774,10 +774,10 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     $('bBest').textContent = luckStr(a.bestLuck);
 
     // rail
-    $('railNote').textContent = items.length ? fmtNum(items.length) + ' minted · ' + esc(earned.toFixed(2)) + ' QUAI' : '';
+    $('railNote').textContent = items.length ? fmtNum(items.length) + ' minted · ' + esc(earned.toFixed(2)) + ' DOGE' : '';
     $('blockRail').innerHTML = items.length ? items.slice(0, 40).map((b) => {
       const kind = b.kind || 'unverified';
-      const label = kind === 'block' ? 'block' : kind === 'workshare' ? 'workshare' : 'confirming';
+      const label = b.orphaned ? 'orphaned' : b.mature ? 'block' : 'confirming';
       const paid = b.paidReward > 0;
       const orphaned = !paid && b.payoutState === 'orphaned';
       const amount = paid ? b.paidReward : orphaned ? 0 : b.estReward;
@@ -791,14 +791,14 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
       return '<div class="blk ' + kind + (paid ? ' paid' : orphaned ? ' orphaned' : '') + '">' +
         '<span class="st">' + (orphaned ? 'orphaned' : label) + '</span>' +
         '<div class="h">#' + fmtNum(b.height) + '</div>' +
-        '<div class="rw">' + (amount ? amount.toFixed(2) : '–') + ' <span class="label">QUAI</span>' + (paid || orphaned ? '' : ' <span class="label" title="estimated until the payout lands">est</span>') + '</div>' +
+        '<div class="rw">' + (amount ? amount.toFixed(2) : '–') + ' <span class="label">DOGE</span>' + (paid || orphaned ? '' : ' <span class="label" title="estimated until the payout lands">est</span>') + '</div>' +
         '<div class="meta">' + esc(b.worker.split('.').pop()) + ' · ' + ago(b.foundAt) + '<br>' + link + '</div>' +
         '</div>';
     }).join('') : '<div class="empty" style="flex:1">Nothing yet. Every share is a roll of the dice; the histogram below shows how close they are coming.</div>';
 
     // histogram of how close shares get, in decades of the threshold
     const all = [];
-    ALGOS.forEach((kk) => (d.shares[kk] || []).forEach((sh) => all.push((100 * sh.diff) / Math.max(1e-12, sh.threshold))));
+    CHAINS.forEach((kk) => (d.shares[kk] || []).forEach((sh) => all.push((100 * sh.diff) / Math.max(1e-12, sh.threshold))));
     const buckets = [0, 0, 0, 0, 0];
     all.forEach((v) => {
       const i = v >= 100 ? 4 : v >= 10 ? 3 : v >= 1 ? 2 : v >= 0.1 ? 1 : 0;
@@ -809,52 +809,20 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     $('histNote').textContent = all.length ? fmtNum(all.length) + ' shares · ' + state.shareRange : 'no shares yet';
     $('histBars').innerHTML = buckets.map((n, i) =>
       '<div class="col"><span class="n">' + fmtNum(n) + '</span><div class="b' + (i === 4 ? ' win' : '') + '" style="height:' + Math.max(2, (100 * n) / peak).toFixed(1) + '%"></div><span class="lab">' + labels[i] + '</span></div>').join('');
-
-    // by lock period: the multiples come from LockupByteToRewardsMultiple in
-    // go-quai, first-year value and the terminal rate from year five.
-    const LOCKS = [
-      { n: 0, name: 'No lock', hold: '2 weeks', y1: 1, term: 1 },
-      { n: 1, name: '3 months', hold: '3 months', y1: 1.035, term: 1.00218 },
-      { n: 2, name: '6 months', hold: '6 months', y1: 1.1, term: 1.00625 },
-      { n: 3, name: '12 months', hold: '12 months', y1: 1.25, term: 1.01562 },
-    ];
     // Rolling 12 months: the tiers are about accumulation, not the live view, and
     // twelve months matches the longest lock. Orphans earned nothing, so they are out.
     const yearAgo = Date.now() - 365 * 86400e3;
     const inWindow = items.filter((b) => new Date(b.foundAt).getTime() >= yearAgo);
     const paidItems = inWindow.filter((b) => b.paidReward > 0 || b.payoutState !== 'orphaned');
     const oldest = items.length ? Math.min(...items.map((b) => new Date(b.foundAt).getTime())) : Date.now();
-    $('lockWindow').textContent =
-      oldest > yearAgo
-        ? 'since ' + new Date(oldest).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · rolling 12 months'
-        : 'rolling 12 months';
-    $('lockCards').innerHTML = LOCKS.map((L) => {
-      const mine = paidItems.filter((b) => b.lockRead && b.lock === L.n);
-      const base = mine.reduce((s, b) => s + (b.paidReward || b.estReward || 0), 0);
-      const boosted = base * L.y1;
-      const unknown = L.n === 0 ? inWindow.filter((b) => !b.lockRead).length : 0;
-      return (
-        '<div class="card" style="padding:14px 16px' + (mine.length ? ';border-color:var(--red-line)' : '') + '">' +
-        '<div class="label">' + L.name + '</div>' +
-        '<div class="big" style="font-size:22px">' + fmtNum(mine.length) + ' <span class="label">minted</span></div>' +
-        '<div class="kv" style="display:block;line-height:1.9">' +
-        '<span>earned <b>' + base.toFixed(2) + '</b> QUAI</span><br>' +
-        (L.n === 0
-          ? '<span>no boost · unlocks after ' + L.hold + '</span>'
-          : '<span>with boost <b>' + boosted.toFixed(2) + '</b> QUAI</span><br><span>+' +
-            ((L.y1 - 1) * 100).toFixed(1) + '% now, +' + ((L.term - 1) * 100).toFixed(3) + '% from year 5 · locked ' + L.hold + '</span>') +
-        (unknown ? '<br><span class="dim">' + unknown + ' still being read</span>' : '') +
-        '</div></div>'
-      );
-    }).join('');
 
     // best shares
     const flat = [];
-    ALGOS.forEach((kk) => (d.shares[kk] || []).forEach((sh) => flat.push({ k: kk, luck: (100 * sh.diff) / Math.max(1e-12, sh.threshold), diff: sh.diff, t: sh.t })));
+    CHAINS.forEach((kk) => (d.shares[kk] || []).forEach((sh) => flat.push({ k: kk, luck: (100 * sh.diff) / Math.max(1e-12, sh.threshold), diff: sh.diff, t: sh.t })));
     flat.sort((x, y) => y.luck - x.luck);
     $('bestShares').innerHTML = flat.length ? flat.slice(0, 6).map((sh) => {
       const hit = sh.luck >= 100;
-      return '<tr><td>' + algoBadge(sh.k) + '</td><td><div class="bar"><i style="width:' + Math.min(100, sh.luck).toFixed(0) + '%"></i><b' + (hit ? ' class="hit"' : '') + '>' + luckStr(sh.luck) + (hit ? ' — cleared' : '') + '</b></div></td><td class="num">' + fmtCompact(sh.diff) + '</td><td class="num">' + ago(sh.t) + '</td></tr>';
+      return '<tr><td>' + chainBadge(sh.k) + '</td><td><div class="bar"><i style="width:' + Math.min(100, sh.luck).toFixed(0) + '%"></i><b' + (hit ? ' class="hit"' : '') + '>' + luckStr(sh.luck) + (hit ? ' — cleared' : '') + '</b></div></td><td class="num">' + fmtCompact(sh.diff) + '</td><td class="num">' + ago(sh.t) + '</td></tr>';
     }).join('') : '<tr><td colspan="4" class="empty">No shares in this range yet.</td></tr>';
   }
 
@@ -870,17 +838,17 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   function drawPerf() {
     const svg = $('perfChart'); svg.innerHTML = '';
     const W = 1000, H = 280, L = 80, R = 50, T = 14, B = 30;
-    const k = state.algo; const col = css(ALGO_VAR[k]);
+    const k = state.chain; const col = css(CHAIN_VAR[k]);
     const pts = state.data.history[k] || [];
     const setLegend = (cur, avg) => {
       $('perfLegend').innerHTML =
-        '<span><i style="background:var(' + ALGO_VAR[k] + ');height:9px;width:9px;border-radius:2px"></i>Current: <b style="color:var(--text);font-weight:500">' + esc(cur) + '</b></span>' +
+        '<span><i style="background:var(' + CHAIN_VAR[k] + ');height:9px;width:9px;border-radius:2px"></i>Current: <b style="color:var(--text);font-weight:500">' + esc(cur) + '</b></span>' +
         '<span><i style="background:var(--green);height:9px;width:9px;border-radius:2px"></i>' + state.perfRange.toUpperCase() + ' avg: <b style="color:var(--text);font-weight:500">' + esc(avg) + '</b></span>' +
         '<span><i style="background:var(--muted);height:1px"></i>reject %</span>';
     };
     setLegend('–', '–');
     if (!pts.length || !pts.some((p) => p[1] > 0)) {
-      el('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle' }, svg).textContent = 'No ' + ALGO_NAME[k] + ' hashrate recorded in this range yet';
+      el('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle' }, svg).textContent = 'No ' + CHAIN_NAME[k] + ' hashrate recorded in this range yet';
       return;
     }
     const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
@@ -932,10 +900,10 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   }
 
   // ── connect builder ─────────────────────────────────────────────────────
-  const cfg = { algo: store.get('c.algo', 'sha256'), diff: store.get('c.diff', 'var'), lock: store.get('c.lock', '0') };
+  const cfg = { chain: store.get('c.chain', 'litecoin'), diff: store.get('c.diff', 'var') };
   function pressGroup(id, attr, val) { document.querySelectorAll('#' + id + ' [data-' + attr + ']').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[attr] === val))) }
   function renderConnect() {
-    pressGroup('cAlgo', 'v', cfg.algo); pressGroup('cDiff', 'v', cfg.diff); pressGroup('cLock', 'v', cfg.lock);
+    pressGroup('cChain', 'v', cfg.chain); pressGroup('cDiff', 'v', cfg.diff);
     $('cFixedBox').classList.toggle('hidden', cfg.diff !== 'fixed');
     const host = location.hostname || 'your-server.local';
     $('oUrl').textContent = 'stratum+tcp://' + host + ':' + PORT[cfg.algo];
@@ -953,13 +921,12 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
         $('cDiffHint').textContent = 'd=' + shown + ' gives about one share every 30 seconds';
       } else { $('cDiffHint').textContent = 'enter your hashrate to calculate d' }
     }
-    if (cfg.lock !== '0') parts.push('lock=' + cfg.lock);
-    // '_' rather than ',': go-quai accepts either, but Canaan/Avalon firmware
+    // '_' rather than ',': Canaan/Avalon firmware
     // will not accept a comma in the password field.
     $('oPass').textContent = parts.length ? parts.join('_') : 'x';
-    $('pSha').textContent = ':' + PORT.sha256;
-    $('pScrypt').textContent = ':' + PORT.scrypt;
-    $('pKawpow').textContent = ':' + PORT.kawpow;
+    /* One port for both chains: merge mining is a single connection, and a
+       miner that split across two would be mining the same work twice. */
+    $('pStratum').textContent = ':' + (PORT.litecoin || 3310);
   }
 
   // ── wiring ──────────────────────────────────────────────────────────────
@@ -971,11 +938,11 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   }
   document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
   document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.goto)));
-  document.querySelectorAll('#histAlgo .segb').forEach((b) => b.addEventListener('click', () => {
-    state.algo = b.dataset.algo; store.set('algo', state.algo); renderDashboard();
+  document.querySelectorAll('#histChain .segb').forEach((b) => b.addEventListener('click', () => {
+    state.chain = b.dataset.algo; store.set('algo', state.chain); renderDashboard();
   }));
   document.querySelectorAll('#workerAlgo button').forEach((b) => b.addEventListener('click', () => {
-    state.wAlgo = b.dataset.a; document.querySelectorAll('#workerAlgo button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); renderWorkers();
+    state.wChain = b.dataset.a; document.querySelectorAll('#workerAlgo button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); renderWorkers();
   }));
   document.querySelectorAll('.range[data-range-for]').forEach((grp) => grp.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
     grp.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -986,7 +953,7 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
     state.wFilter = b.dataset.f; document.querySelectorAll('#workerFilter button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); renderWorkers();
   }));
   $('workerSearch').addEventListener('input', renderWorkers);
-  [['cAlgo', 'algo'], ['cDiff', 'diff'], ['cLock', 'lock']].forEach(([id, key]) => document.querySelectorAll('#' + id + ' .opt').forEach((b) => b.addEventListener('click', () => {
+  [['cChain', 'chain'], ['cDiff', 'diff']].forEach(([id, key]) => document.querySelectorAll('#' + id + ' .opt').forEach((b) => b.addEventListener('click', () => {
     cfg[key] = b.dataset.v; store.set('c.' + key, cfg[key]); renderConnect();
   })));
   $('cAddr').value = store.get('c.addr', ''); $('cWorker').value = store.get('c.worker', '');

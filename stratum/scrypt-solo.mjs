@@ -851,6 +851,11 @@ class StratumServer {
        still be short, but an unbounded array fed by a loop is how a
        long-running process leaks. */
     this.blocks = [];
+    /* Recent shares, for the distribution the dashboard draws. Only the
+       achieved difficulty is kept -- enough to show how close each one came
+       without storing a header per share. Bounded: a busy rig produces
+       thousands an hour and this is a liveness view, not an archive. */
+    this.shares = [];
     this.startedAt = Date.now();
     /* Converged difficulty, remembered per worker name. A reconnecting miner
        otherwise restarts at VARDIFF.start and re-climbs through every step,
@@ -1073,6 +1078,9 @@ class StratumServer {
        of thousands of shares per second; waiting for the 5-second vardiff timer
        would mean six figures of submissions before the first correction. */
     if (client.vdShares >= VARDIFF.minShares) this.retarget(client);
+
+    this.shares.push({ t: Date.now(), achieved, assigned, worker: client.worker });
+    if (this.shares.length > 2000) this.shares.shift();
 
     if (shouldLog)
       log(`  ${client.id} share achieved ${achieved.toFixed(1)}`
@@ -1684,6 +1692,15 @@ function statsSnapshot(srv, now = Date.now()) {
     workers,
     connected,
     blocks: srv.blocks,
+    shares: srv.shares,
+    /* Network difficulty for each chain at this moment, so a consumer can
+       work out how close a share came WITHOUT a second RPC round trip --
+       and so the two numbers cannot disagree about which target was live
+       when the share arrived. */
+    networkDifficulty: {
+      [PRIMARY_CHAIN]: job ? Number(DIFF1 / job.target) : null,
+      ...(job?.aux ? { [AUX_CHAIN]: Number(DIFF1 / job.aux.target) } : {}),
+    },
   };
 }
 
@@ -1741,6 +1758,10 @@ async function run() {
       clients: new Set(),
       meter: new ShareMeter(),
       blocks: [],
+      /* Same SHAPE as a running server, not a subset. A consumer that gets
+         an array here and undefined there has to special-case the idle
+         state, and whichever branch is rarer is the one that breaks. */
+      shares: [],
       jobs: null,
     };
     const api = startStatsApi(idle, Number(process.env.STRATUM_API_PORT || 0));

@@ -107,22 +107,22 @@ type NodeSummary struct {
 type ChainSummary struct {
 	// Repeated from the shared figure, deliberately: the same work is tested
 	// against both targets, so this is the hashrate aimed at this chain.
-	Hashrate      float64 `json:"hashrate"`
-	HashrateErr   float64 `json:"hashrateErr"`
-	Difficulty    float64 `json:"difficulty"`
-	NetHashrate   float64 `json:"netHashrate"`
-	BlockReward   float64 `json:"blockReward"`
-	BlockSeconds  float64 `json:"blockSeconds"`
-	BlocksFound   int     `json:"blocksFound"`
-	Node          NodeSummary `json:"node"`
+	Hashrate     float64     `json:"hashrate"`
+	HashrateErr  float64     `json:"hashrateErr"`
+	Difficulty   float64     `json:"difficulty"`
+	NetHashrate  float64     `json:"netHashrate"`
+	BlockReward  float64     `json:"blockReward"`
+	BlockSeconds float64     `json:"blockSeconds"`
+	BlocksFound  int         `json:"blocksFound"`
+	Node         NodeSummary `json:"node"`
 	// Expected days to a block at the current hashrate, and the odds over a
 	// year. Honest arithmetic, not a guess: share of network times blocks per
 	// day. Zero when there is no rate yet rather than a fabricated number.
-	ExpectedDays  float64 `json:"expectedDays"`
-	OddsPerYear   float64 `json:"oddsPerYear"`
-	SharesValid   uint64  `json:"sharesValid"`
-	SharesStale   uint64  `json:"sharesStale"`
-	BestLuck      float64 `json:"bestLuck"`
+	ExpectedDays float64 `json:"expectedDays"`
+	OddsPerYear  float64 `json:"oddsPerYear"`
+	SharesValid  uint64  `json:"sharesValid"`
+	SharesStale  uint64  `json:"sharesStale"`
+	BestLuck     float64 `json:"bestLuck"`
 }
 
 type Summary struct {
@@ -181,6 +181,13 @@ type statsConnected struct {
 	StaleBlocks uint64  `json:"staleBlocks"`
 }
 
+type statsShare struct {
+	T        int64   `json:"t"`
+	Achieved float64 `json:"achieved"`
+	Assigned float64 `json:"assigned"`
+	Worker   string  `json:"worker"`
+}
+
 type statsBlock struct {
 	Chain   string `json:"chain"`
 	Height  uint64 `json:"height"`
@@ -190,15 +197,17 @@ type statsBlock struct {
 }
 
 type stratumStats struct {
-	OK          bool             `json:"ok"`
-	Now         int64            `json:"now"`
-	Uptime      int64            `json:"uptimeSeconds"`
-	PayoutMode  string           `json:"payoutMode"`
-	Accounts    []statsAccount   `json:"accounts"`
-	Workers     []statsWorker    `json:"workers"`
-	Connected   []statsConnected `json:"connected"`
-	Blocks      []statsBlock     `json:"blocks"`
-	WindowMins  int              `json:"windowMinutes"`
+	OK         bool                `json:"ok"`
+	Now        int64               `json:"now"`
+	Uptime     int64               `json:"uptimeSeconds"`
+	PayoutMode string              `json:"payoutMode"`
+	Accounts   []statsAccount      `json:"accounts"`
+	Workers    []statsWorker       `json:"workers"`
+	Connected  []statsConnected    `json:"connected"`
+	Blocks     []statsBlock        `json:"blocks"`
+	Shares     []statsShare        `json:"shares"`
+	NetDiff    map[string]*float64 `json:"networkDifficulty"`
+	WindowMins int                 `json:"windowMinutes"`
 }
 
 // ── collector ──────────────────────────────────────────────────────────────
@@ -699,6 +708,50 @@ func (c *collector) handleHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+// handleShares reports how close each recent share came, PER CHAIN.
+//
+// The same share is tested against two different targets, so one share has
+// two luck figures -- a submission that is 0.3% of Dogecoin's target is a
+// smaller fraction of Litecoin's, because Litecoin's is harder. Serving a
+// single number would hide exactly the asymmetry that makes merge mining
+// worth doing.
+func (c *collector) handleShares(w http.ResponseWriter, r *http.Request) {
+	span := rangeMillis(r.URL.Query().Get("range"))
+	cut := time.Now().UnixMilli() - span
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	out := map[string][]map[string]interface{}{}
+	for _, name := range chainOrder {
+		rows := []map[string]interface{}{}
+		if c.stats != nil {
+			// Network difficulty for this chain, preferring what the stratum
+			// saw when the share arrived over anything re-derived here.
+			var netDiff float64
+			if d, ok := c.stats.NetDiff[name]; ok && d != nil {
+				netDiff = *d
+			} else if cs, ok := c.chains[name]; ok {
+				netDiff = cs.Difficulty
+			}
+			for _, sh := range c.stats.Shares {
+				if sh.T < cut {
+					continue
+				}
+				rows = append(rows, map[string]interface{}{
+					"t":         sh.T,
+					"diff":      sh.Achieved,
+					"threshold": netDiff,
+					"isBlock":   netDiff > 0 && sh.Achieved >= netDiff,
+					"worker":    sh.Worker,
+				})
+			}
+		}
+		out[name] = rows
+	}
+	writeJSON(w, out)
+}
+
 func (c *collector) handleCSV(w http.ResponseWriter, r *http.Request) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -741,6 +794,7 @@ func main() {
 	mux.HandleFunc("/dash/workers", c.handleWorkers)
 	mux.HandleFunc("/dash/blocks", c.handleBlocks)
 	mux.HandleFunc("/dash/history", c.handleHistory)
+	mux.HandleFunc("/dash/shares", c.handleShares)
 	mux.HandleFunc("/dash/export.csv", c.handleCSV)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]bool{"ok": true})
