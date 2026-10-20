@@ -22,6 +22,7 @@
 
 import net from 'node:net';
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 import { createHash, scryptSync, randomBytes } from 'node:crypto';
 
 /* ── primitives (verified) ────────────────────────────────────────────────── */
@@ -216,6 +217,64 @@ function addressToScript(addr) {
    anything else or the commitment will not match what we committed to. */
 const WITNESS_RESERVED = Buffer.alloc(32);
 
+/* ── merged mining (AuxPoW) ───────────────────────────────────────────────
+ *
+ * The Namecoin merged-mining standard, which is how Dogecoin has accepted
+ * blocks since height 371,337. Nothing here is specific to scrypt or to any
+ * algorithm: it is a rule about where a parent chain's coinbase commits to a
+ * child chain's block hash.
+ *
+ * With exactly ONE aux chain the structure collapses pleasantly:
+ *   - the chain merkle branch is empty
+ *   - size is 1 << 0 == 1
+ *   - the expected index reduces to 0 for any nonce, since it ends in
+ *     `% (1 << 0)`
+ * so the "merkle tree of aux chains" degenerates to the aux block hash
+ * itself. Verified against Dogecoin's own CAuxPow::check and
+ * getExpectedIndex. */
+const MM_MAGIC = Buffer.from('fabe6d6d', 'hex');
+
+/* The bytes that must appear in the PARENT coinbase scriptSig.
+ *
+ * `auxHashHex` is the hash as createauxblock reports it. Dogecoin reverses
+ * the internal uint256 before searching the script ("correct endian" in its
+ * own comment), which means the bytes it looks for are the display-order hex
+ * exactly as given — no reversal here. Getting that backwards produces a
+ * coinbase that looks right and fails with "missing chain merkle root". */
+function mergedMiningTail(auxHashHex) {
+  return Buffer.concat([
+    MM_MAGIC,
+    Buffer.from(auxHashHex, 'hex'),
+    u32le(1),   // merkle size: 1 << branch length, and the branch is empty
+    u32le(0),   // nonce; with one chain the expected index is 0 regardless
+  ]);
+}
+
+const i32le = (n) => { const b = Buffer.alloc(4); b.writeInt32LE(n); return b; };
+
+/* Serialize a CAuxPow exactly as Dogecoin deserializes it:
+ *
+ *   CMerkleTx: tx, hashBlock, vMerkleBranch, nIndex
+ *   then:      vChainMerkleBranch, nChainIndex, parentBlock
+ *
+ * `tx` is the STRIPPED parent coinbase, never the witness form. Dogecoin 1.14
+ * predates segwit and its deserializer has no marker/flag concept: handed the
+ * witness serialization it reads the 0x00 marker as an input count of zero
+ * and rejects with "Aux POW coinbase has no inputs". The txid the merkle
+ * branch proves is defined over these bytes anyway. */
+function buildAuxPow({ coinbaseStripped, branch, parentHeader }) {
+  const parentHash = sha256d(parentHeader);
+  return Buffer.concat([
+    coinbaseStripped,
+    parentHash,
+    varint(branch.length), ...branch,
+    i32le(0),              // coinbase is always index 0 in the parent block
+    varint(0),             // empty chain merkle branch: a single aux chain
+    i32le(0),              // and therefore chain index 0
+    parentHeader,
+  ]).toString('hex');
+}
+
 /* Re-serialise a coinbase in segwit form for block submission.
  *
  * This is deliberately NOT what miners are given. coinb1/coinb2 stay the
@@ -329,19 +388,46 @@ function prevhashToStratum(displayHex) {
 
 /* ── RPC ──────────────────────────────────────────────────────────────────── */
 
+/* Cookie auth, read fresh on every call and never cached.
+ *
+ * Core rewrites .cookie on every start, so a cached value is wrong the moment
+ * the node restarts — and the node restarting is exactly when a miner most
+ * needs the stratum to keep working. Reading per call always has the current
+ * one. This is why a dependent that can see the node's volume needs no
+ * credential issued to it at all. */
+function cookieAuth(path) {
+  const raw = readFileSync(path, 'utf8').trim();
+  return 'Basic ' + Buffer.from(raw).toString('base64');
+}
+
 const cfg = {
   host: process.env.RPC_HOST || '127.0.0.1',
   port: process.env.RPC_PORT || '18332',
   user: process.env.RPC_USER || 'regtest',
   pass: process.env.RPC_PASS || 'regtest',
+  cookie: process.env.RPC_COOKIE || '',
 };
 
-async function rpc(method, params = []) {
-  const res = await fetch(`http://${cfg.host}:${cfg.port}/`, {
+/* The AUX chain, when merge mining. Its own endpoint: the parent chain builds
+   the block, the aux chain contributes a hash to commit to and receives the
+   solution back. Absent means single-chain mining, exactly as before. */
+const auxCfg = {
+  host: process.env.AUX_RPC_HOST || '',
+  port: process.env.AUX_RPC_PORT || '',
+  user: process.env.AUX_RPC_USER || '',
+  pass: process.env.AUX_RPC_PASS || '',
+  cookie: process.env.AUX_RPC_COOKIE || '',
+};
+const AUX_ENABLED = Boolean(auxCfg.host && auxCfg.port);
+
+async function rpcTo(c, method, params = []) {
+  const res = await fetch(`http://${c.host}:${c.port}/`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: 'Basic ' + Buffer.from(`${cfg.user}:${cfg.pass}`).toString('base64'),
+      authorization: c.cookie
+        ? cookieAuth(c.cookie)
+        : 'Basic ' + Buffer.from(`${c.user}:${c.pass}`).toString('base64'),
     },
     body: JSON.stringify({ jsonrpc: '1.0', id: 'stratum', method, params }),
   });
@@ -349,6 +435,9 @@ async function rpc(method, params = []) {
   if (j.error) throw new Error(`${method}: ${JSON.stringify(j.error)}`);
   return j.result;
 }
+
+const rpc = (method, params = []) => rpcTo(cfg, method, params);
+const auxRpc = (method, params = []) => rpcTo(auxCfg, method, params);
 
 /* ── vardiff ──────────────────────────────────────────────────────────────── */
 
@@ -459,6 +548,9 @@ const PRIMARY_CHAIN = process.env.CHAIN_NAME || 'litecoin';
 /* getblocktemplate rule set. Litecoin REQUIRES ["mweb","segwit"]; Dogecoin
    1.14 wants an empty list. Comma-separated so a package can set it without
    quoting JSON into an environment variable. */
+/* Name of the merge-mined chain, for block records and logs. */
+const AUX_CHAIN = process.env.AUX_CHAIN_NAME || 'dogecoin';
+
 const GBT_RULES = (process.env.GBT_RULES ?? 'mweb,segwit')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -625,10 +717,16 @@ class JobManager {
    * it in the constructor means a malformed address throws at startup instead
    * of yielding blocks that pay nobody, and no call site can hand refresh() a
    * script that disagrees with the address being reported in the logs. */
-  constructor(payoutAddress) {
+  constructor(payoutAddress, auxAddress = null) {
     this.jobs = new Map(); this.current = null; this.seq = 0;
     this.payoutAddress = payoutAddress;
     this.payoutScript = addressToScript(payoutAddress);
+    /* Validated by the AUX chain's own node, not here: `createauxblock`
+       refuses a bad payout address with "Invalid coinbase payout address",
+       which is a better check than any regex, and it is the node that has to
+       pay it. Passing it through means a wrong address fails on the first
+       refresh rather than when a block is found. */
+    this.auxAddress = auxAddress;
   }
 
   async refresh() {
@@ -666,9 +764,40 @@ class JobManager {
       ? Buffer.from(t.default_witness_commitment, 'hex')
       : null;
 
+    /* Ask the aux chain for a block to commit to. Its hash goes into the
+       parent coinbase, so this MUST happen before the coinbase is built —
+       and a new one is taken per template, because committing to a stale aux
+       block means a solved parent header that the aux chain refuses. */
+    let aux = null;
+    if (AUX_ENABLED) {
+      try {
+        const a = await auxRpc('createauxblock', [this.auxAddress]);
+        aux = {
+          hash: a.hash,
+          chainid: a.chainid,
+          /* `target` is reported in reversed byte order (Dogecoin names the
+             field `_target` on some builds for exactly that reason), so it is
+             reversed here into the big-endian integer a hash compares
+             against. */
+          target: BigInt('0x' + rev(Buffer.from(a._target || a.target, 'hex')).toString('hex')),
+          height: a.height,
+          value: a.coinbasevalue,
+        };
+      } catch (e) {
+        /* The parent chain is still perfectly mineable without the aux chain;
+           losing it costs the second lottery ticket, not the first. Never let
+           an aux failure stop work going out. */
+        log(`! aux createauxblock: ${e.message} — mining ${PRIMARY_CHAIN} only this round`);
+      }
+    }
+
+    const tail = aux
+      ? Buffer.concat([mergedMiningTail(aux.hash), Buffer.from('/awm-solo/')])
+      : Buffer.from('/awm-solo/');
+
     const { coinb1, coinb2 } = splitCoinbase({
       height: t.height, value: t.coinbasevalue, script: payoutScript,
-      en1Size: EN1_SIZE, en2Size: EN2_SIZE, tail: Buffer.from('/awm-solo/'),
+      en1Size: EN1_SIZE, en2Size: EN2_SIZE, tail,
       commitment,
     });
     const others = txs.map((x) => rev(Buffer.from(x.txid || x.hash, 'hex')));
@@ -676,7 +805,7 @@ class JobManager {
     const job = {
       id: (++this.seq).toString(16).padStart(8, '0'),
       height: t.height, prevhash: t.previousblockhash,
-      coinb1, coinb2, branch: merkleBranch(others), others, commitment,
+      coinb1, coinb2, branch: merkleBranch(others), others, commitment, aux,
       version: t.version, bits: t.bits, curtime: t.curtime,
       target: targetFromBits(t.bits), txs, txCount: txs.length,
       payoutScript, stale: false,
@@ -950,6 +1079,46 @@ class StratumServer {
           + ` vs ${assigned} assigned, credited ${credit}`
           + ` (ratio 2^${(Math.log2(Math.max(achieved, 1e-12) / assigned)).toFixed(1)}`
           + `${graceOn ? `, grace floor ${effDiff}` : ''})`);
+
+    /* THE AUX CHAIN IS CHECKED FIRST AND INDEPENDENTLY.
+     *
+     * This is the whole point of merge mining: one scrypt hash, two targets,
+     * and they are unrelated. The aux target is usually the easier of the two
+     * (Dogecoin's 60-second block against Litecoin's 150), so most wins are
+     * aux-only — and gating this behind the parent check would throw away the
+     * majority of what merge mining earns, silently, while the dashboard
+     * showed everything working.
+     *
+     * A share that clears neither is just a share; one that clears both pays
+     * twice from the same work. */
+    if (job.aux && hash <= job.aux.target) {
+      const coinbase = Buffer.concat([job.coinb1, client.en1, en2, job.coinb2]);
+      try {
+        const auxpow = buildAuxPow({
+          coinbaseStripped: coinbase,
+          branch: job.branch,
+          parentHeader: header,
+        });
+        const res = await auxRpc('submitauxblock', [job.aux.hash, auxpow]);
+        if (res === true || res === null) {
+          log(`  *** AUX BLOCK ACCEPTED — ${job.aux.height} on the aux chain`
+              + ` -> ${this.jobs.auxAddress} (found by "${client.worker}") ***`);
+          this.blocks.push({
+            chain: AUX_CHAIN, height: job.aux.height,
+            address: this.jobs.auxAddress, worker: client.worker,
+            foundAt: Date.now(),
+          });
+          if (this.blocks.length > 500) this.blocks.shift();
+        } else {
+          log(`  !!! aux block not accepted (${JSON.stringify(res)}) — share still credited`);
+        }
+      } catch (e) {
+        /* Same rule as the parent chain: the SHARE was valid, it cleared the
+           target we set. Never return a rejection because our submission
+           failed — firmware counts rejects to decide a pool is broken. */
+        log(`  !!! submitauxblock failed: ${e.message} — share still credited`);
+      }
+    }
 
     if (hash <= job.target) {
       /* A solution against a job whose tip has already moved is an orphan by
@@ -1320,7 +1489,7 @@ async function selftest() {
 
   const WORKER_NAME = 'awm_00001.avalonmini3_001';
 
-  const jobs = new JobManager(addr);
+  const jobs = new JobManager(addr, process.env.AUX_PAYOUT_ADDRESS || null);
   await jobs.refresh();
   const srv = new StratumServer({ port: 0, jobs });
   const port = await srv.start();
@@ -1586,7 +1755,15 @@ async function run() {
     return;
   }
 
-  const jobs = new JobManager(addr);          // throws now if addr is malformed
+  const auxAddr = process.env.AUX_PAYOUT_ADDRESS || null;
+  if (AUX_ENABLED && !auxAddr) {
+    throw new Error(
+      'AUX_RPC_HOST is set but AUX_PAYOUT_ADDRESS is not. Merge mining needs\n'
+      + 'somewhere for the aux chain to pay: its coinbase is built by its own\n'
+      + 'node, which refuses an address it cannot pay.');
+  }
+
+  const jobs = new JobManager(addr, auxAddr);  // throws now if addr is malformed
   await jobs.refresh();
   log(`all blocks pay ${addr}`);
 
