@@ -210,14 +210,58 @@ function addressToScript(addr) {
     : Buffer.concat([Buffer.from([0x76, 0xa9, 0x14]), body.subarray(1), Buffer.from([0x88, 0xac])]);
 }
 
-function splitCoinbase({ height, value, script, en1Size, en2Size, tail }) {
+/* The coinbase witness BIP141 requires when a commitment output is present:
+   exactly one stack item of 32 zero bytes. `default_witness_commitment` from
+   the template is computed assuming precisely this value, so it must not be
+   anything else or the commitment will not match what we committed to. */
+const WITNESS_RESERVED = Buffer.alloc(32);
+
+/* Re-serialise a coinbase in segwit form for block submission.
+ *
+ * This is deliberately NOT what miners are given. coinb1/coinb2 stay the
+ * stripped, pre-segwit serialisation because the miner concatenates them with
+ * its extranonces and hashes the result to get the coinbase TXID for the
+ * merkle root — and a txid is defined over the non-witness bytes. Handing a
+ * miner the witness form would make every merkle root it computes wrong,
+ * which is how a pool produces shares that look fine and blocks that are
+ * rejected.
+ *
+ * The witness is spliced in only here, at submission: marker+flag after the
+ * version, and the witness stack immediately before the locktime. */
+function coinbaseWithWitness(stripped) {
+  const version = stripped.subarray(0, 4);
+  const body = stripped.subarray(4, stripped.length - 4);
+  const locktime = stripped.subarray(stripped.length - 4);
+  return Buffer.concat([
+    version,
+    Buffer.from([0x00, 0x01]),          // segwit marker + flag
+    body,
+    varint(1), varint(WITNESS_RESERVED.length), WITNESS_RESERVED,
+    locktime,
+  ]);
+}
+
+function splitCoinbase({ height, value, script, en1Size, en2Size, tail, commitment }) {
   const payload = Buffer.concat([Buffer.alloc(en1Size + en2Size), tail]);
   const scriptSig = Buffer.concat([pushData(scriptNum(height)), pushData(payload)]);
   if (scriptSig.length > 100) throw new Error(`coinbase scriptSig ${scriptSig.length} > 100`);
+  /* A second, zero-value output carrying the witness commitment, when the
+     chain supplies one. Dogecoin 1.14 has no segwit and supplies none, so it
+     keeps a single output exactly as before. */
+  const outputs = commitment
+    ? Buffer.concat([
+        varint(2),
+        u64le(value), varint(script.length), script,
+        u64le(0), varint(commitment.length), commitment,
+      ])
+    : Buffer.concat([
+        varint(1),
+        u64le(value), varint(script.length), script,
+      ]);
   const full = Buffer.concat([
     u32le(1), varint(1), Buffer.alloc(32), Buffer.from('ffffffff', 'hex'),
     varint(scriptSig.length), scriptSig, Buffer.from('ffffffff', 'hex'),
-    varint(1), u64le(value), varint(script.length), script, u32le(0),
+    outputs, u32le(0),
   ]);
   const at = 4 + 1 + 32 + 4 + varint(scriptSig.length).length
     + pushData(scriptNum(height)).length + (payload.length < 0x4c ? 1 : 2);
@@ -613,16 +657,26 @@ class JobManager {
     if (tipMoved) for (const j of this.jobs.values()) j.stale = true;
 
     const txs = t.transactions || [];
+    /* Supplied by chains with segwit active, absent on Dogecoin 1.14. Taken
+       from the template rather than computed here: it commits to the wtxid
+       merkle root of THIS transaction set, which is the set we are about to
+       mine, so the node has already done the work correctly. Computing it
+       ourselves would be a second implementation to get wrong. */
+    const commitment = t.default_witness_commitment
+      ? Buffer.from(t.default_witness_commitment, 'hex')
+      : null;
+
     const { coinb1, coinb2 } = splitCoinbase({
       height: t.height, value: t.coinbasevalue, script: payoutScript,
       en1Size: EN1_SIZE, en2Size: EN2_SIZE, tail: Buffer.from('/awm-solo/'),
+      commitment,
     });
     const others = txs.map((x) => rev(Buffer.from(x.txid || x.hash, 'hex')));
 
     const job = {
       id: (++this.seq).toString(16).padStart(8, '0'),
       height: t.height, prevhash: t.previousblockhash,
-      coinb1, coinb2, branch: merkleBranch(others), others,
+      coinb1, coinb2, branch: merkleBranch(others), others, commitment,
       version: t.version, bits: t.bits, curtime: t.curtime,
       target: targetFromBits(t.bits), txs, txCount: txs.length,
       payoutScript, stale: false,
@@ -911,8 +965,14 @@ class StratumServer {
         return { ok: true, diff: credit };
       }
       log(`  *** ${client.id} BLOCK at height ${job.height} ***`);
+      /* The miner hashed the STRIPPED coinbase to build its merkle root, and
+         that is correct: a txid is defined over the non-witness bytes. The
+         block, however, must carry the witness whenever a commitment output
+         is present, or the node rejects it for an unexpected witness
+         commitment. Splice it in here and nowhere else. */
       const block = Buffer.concat([
-        header, varint(1 + job.txs.length), coinbase,
+        header, varint(1 + job.txs.length),
+        job.commitment ? coinbaseWithWitness(coinbase) : coinbase,
         ...job.txs.map((t) => Buffer.from(t.data, 'hex')),
       ]);
       try {
