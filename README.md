@@ -1,4 +1,4 @@
-# scrypt-solo-startos
+# dogeltc-dashboard-startos
 
 A StartOS service package that solo **merge-mines Dogecoin and Litecoin** against the operator's own nodes.
 

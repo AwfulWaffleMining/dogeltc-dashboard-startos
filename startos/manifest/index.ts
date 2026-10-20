@@ -3,14 +3,15 @@ import { imageId } from '../utils'
 import { long, short } from './i18n'
 
 export const manifest = setupManifest({
-  id: 'scrypt-solo',
-  title: 'Scrypt Solo Mining',
+  id: 'dogeltc-dashboard',
+  title: 'Dogecoin + Litecoin Mining Dashboard',
   license: 'MIT',
-  packageRepo: 'https://github.com/AwfulWaffleMining/scrypt-solo-startos',
-  upstreamRepo: 'https://github.com/AwfulWaffleMining/scrypt-solo-startos',
+  packageRepo: 'https://github.com/AwfulWaffleMining/dogeltc-dashboard-startos',
+  upstreamRepo:
+    'https://github.com/AwfulWaffleMining/dogeltc-dashboard-startos',
   marketingUrl: 'https://www.awfulwafflemining.com',
   donationUrl:
-    'https://github.com/AwfulWaffleMining/scrypt-solo-startos/blob/main/DONATE.md',
+    'https://github.com/AwfulWaffleMining/dogeltc-dashboard-startos/blob/main/DONATE.md',
   description: { short, long },
   volumes: ['main'],
   images: {

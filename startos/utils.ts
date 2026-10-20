@@ -64,4 +64,4 @@ export const healthCheckIds = {
   dashboard: 'dashboard',
 } as const
 
-export const imageId = 'scrypt-solo'
+export const imageId = 'dogeltc-dashboard'
