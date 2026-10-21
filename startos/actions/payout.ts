@@ -69,6 +69,27 @@ export const payoutConfig = sdk.Action.withInput(
                 },
               ],
             }),
+            workerAccount: Value.text({
+              name: i18n('Worker name'),
+              description: i18n(
+                'The part of your miners’ username before the dot — a label for this server, not a password. Leave it blank and one is generated. Each rig then adds its own suffix: yourname.rig1, yourname.garage.',
+              ),
+              required: false,
+              default: null,
+              patterns: [
+                {
+                  /* No comma, because a comma is what separates the two
+                   * addresses in the other payout mode — a worker name
+                   * containing one would be parsed as a payout. No dot,
+                   * because that separates account from rig. Some ASIC
+                   * firmware is also unhappy with anything beyond this set. */
+                  regex: '^[A-Za-z0-9_-]{1,32}$',
+                  description: i18n(
+                    'Letters, numbers, underscore and hyphen only, up to 32 characters. No dots or commas: those separate the parts of a username.',
+                  ),
+                },
+              ],
+            }),
             dogeAddress: Value.text({
               name: i18n('Dogecoin address'),
               description: i18n(
@@ -113,7 +134,11 @@ export const payoutConfig = sdk.Action.withInput(
       return {
         payout: {
           selection: 'addresses' as const,
-          value: { ltcAddress: s.ltcAddress, dogeAddress: s.dogeAddress },
+          value: {
+            ltcAddress: s.ltcAddress,
+            dogeAddress: s.dogeAddress,
+            workerAccount: s.workerAccount || null,
+          },
         },
       }
     }
@@ -143,8 +168,17 @@ export const payoutConfig = sdk.Action.withInput(
     /* Generated once and kept. Regenerating it on every save would change the
      * worker names operators have already configured on their rigs, and
      * silently split their metering history in two. */
+    /* The operator's own name wins; otherwise keep whatever was generated
+     * before, and only invent one the first time. Regenerating on every save
+     * would rename every rig's username behind their back. */
+    const chosen =
+      input.payout.selection === 'addresses'
+        ? input.payout.value.workerAccount?.trim()
+        : null
     const workerAccount =
-      existing?.workerAccount || `awm${randomBytes(3).toString('hex')}`
+      chosen ||
+      existing?.workerAccount ||
+      `awm${randomBytes(3).toString('hex')}`
 
     if (sel === 'workerName') {
       await storeJson.merge(effects, {

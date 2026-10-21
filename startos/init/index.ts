@@ -5,6 +5,7 @@ import { setInterfaces } from '../interfaces'
 import { sdk } from '../sdk'
 import { versionGraph } from '../versions'
 import { payoutTask } from './payoutTask'
+import { rpcTask } from './rpcTask'
 import { seedFiles } from './seedFiles'
 
 /* Quai's `rewardsTask` is deliberately absent: it polled the chain to settle
@@ -20,6 +21,7 @@ export const init = sdk.setupInit(
   seedFiles,
   actions,
   payoutTask,
+  rpcTask,
 )
 
 export const uninit = sdk.setupUninit(versionGraph)

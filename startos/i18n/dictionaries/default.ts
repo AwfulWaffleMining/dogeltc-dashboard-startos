@@ -41,6 +41,11 @@ const dict = {
   'Choose where a found block pays before mining starts. Save two addresses, pay into the nodes’ own wallets, or decline to store anything and send them per miner — any of the three is a complete answer. There is no default, because a server mining into nowhere looks exactly like a working one until the day you win.': 33,
   'Do not store my addresses on this server': 34,
   'Choose where a found block pays before mining starts. Either save your Litecoin and Dogecoin addresses here, or decline to store them and have each miner send them instead — both are complete answers. There is no default, because a server mining into nowhere looks exactly like a working one until the day you win.': 35,
+  'Merge mining builds every block from your ${chain} node, so it has to let other packages on this server talk to it. Open this node’s config, turn on “Share node RPC with other packages” and save. Nothing leaves your server: the RPC stays on the local network, and the mining service reads this node’s own cookie file for the password rather than being given one.': 36,
+  'The ${chain} node is not sharing its RPC. Open that service’s config, turn on “Share node RPC with other packages” and save, then start this one.': 37,
+  'Worker name': 38,
+  'The part of your miners’ username before the dot — a label for this server, not a password. Leave it blank and one is generated. Each rig then adds its own suffix: yourname.rig1, yourname.garage.': 39,
+  'Letters, numbers, underscore and hyphen only, up to 32 characters. No dots or commas: those separate the parts of a username.': 40,
 } as const
 
 /**

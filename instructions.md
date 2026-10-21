@@ -16,7 +16,9 @@ Nothing is divided. You are not splitting your miner between two coins — you a
 
 ## Before you start
 
-You need both the **Litecoin Core** and **Dogecoin Core** packages installed and **fully synced**. This service will not start until they are. That is deliberate: mining against a half-synced node means building on a chain that may not be the real one.
+You need both the **Litecoin Core** and **Dogecoin Core** packages installed and **fully synced**, and each of them has to be letting other packages talk to it. In each node's config, turn on **Share node RPC with other packages** and save — it is off by default, and without it this service can see the node but not ask it for anything. StartOS shows both of these as tasks, and this service will not start until they are done.
+
+Syncing matters for the same kind of reason: mining against a half-synced node means building on a chain that may not be the real one.
 
 Syncing both takes a while — Dogecoin is the longer of the two. There is nothing to do but wait.
 
@@ -35,7 +37,9 @@ Both options pay addresses you control. What differs is whether this server keep
 
 Use **one** connection per miner. Both coins come from that single connection — adding a second would just mine the same work twice.
 
-Your worker name looks like `awm7f3a.rig1`. Change the part after the dot for each machine (`rig1`, `rig2`, `garage`) so you can tell them apart in the dashboard. Leave the part before the dot alone.
+Your worker name has two parts: a label for this server, then a label for the machine. You can set the first part yourself in **Payouts** — leave it blank and one is generated. The second part is per rig: `yourname.rig1`, `yourname.garage`, so you can tell them apart in the dashboard.
+
+Avoid dots and commas inside either part. A dot separates the two halves, and a comma is what the other payout mode uses to separate your two addresses.
 
 Your payout addresses are **not** part of the worker name, which is how some pools do it. They stay in settings, so they never travel over the network and never hit the character limits that make some ASIC firmware misbehave.
 

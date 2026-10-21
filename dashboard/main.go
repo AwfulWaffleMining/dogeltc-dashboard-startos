@@ -233,6 +233,10 @@ type stratumStats struct {
 	Now        int64  `json:"now"`
 	Uptime     int64  `json:"uptimeSeconds"`
 	PayoutMode string `json:"payoutMode"`
+	// Only a suggestion: mining.authorize accepts any username, and the meter
+	// reports what miners actually sent. Carried so the Connect tab has
+	// something real to show before the first miner has ever connected.
+	WorkerAccount string `json:"workerAccount"`
 	// Where blocks actually pay, read off the live job rather than echoed
 	// from config, so this reports what will be paid rather than what was set.
 	PayoutAddresses []PayoutTarget      `json:"payoutAddresses"`
@@ -710,8 +714,14 @@ func (c *collector) handleSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	if c.stats != nil {
 		s.Uptime = c.stats.Uptime
+		/* Prefer an account a miner has actually used -- that is ground truth
+		   about what works. Before any miner has connected, fall back to the
+		   name the operator configured, so the Connect tab can be followed on
+		   a fresh install instead of saying "waiting". */
 		if len(c.stats.Accounts) > 0 {
 			s.WorkerHint = c.stats.Accounts[0].Account + ".rig1"
+		} else if c.stats.WorkerAccount != "" {
+			s.WorkerHint = c.stats.WorkerAccount + ".rig1"
 		}
 	}
 	writeJSON(w, s)

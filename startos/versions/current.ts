@@ -16,18 +16,18 @@ import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
  * found by this package on a real chain.
  */
 export const current = VersionInfo.of({
-  version: '0.1.0:0',
+  version: '0.1.0:1',
   releaseNotes: {
     en_US:
-      'First release. Solo merge-mines Dogecoin and Litecoin against your own nodes — one scrypt hash tested against both targets, no pool and no fee. Both node packages must be installed and fully synced, and the service will not start until you have chosen where blocks pay.',
+      'Requires each node to be sharing its RPC, which is off by default — the service now says so as a task instead of failing to start. Your worker name can be set yourself in Payouts. First release otherwise. Solo merge-mines Dogecoin and Litecoin against your own nodes — one scrypt hash tested against both targets, no pool and no fee. Both node packages must be installed and fully synced, and the service will not start until you have chosen where blocks pay.',
     es_ES:
-      'Primera versión. Mina en solitario Dogecoin y Litecoin de forma combinada contra tus propios nodos: un único hash scrypt comprobado contra ambos objetivos, sin pool ni comisión. Ambos paquetes de nodo deben estar instalados y totalmente sincronizados, y el servicio no se iniciará hasta que elijas dónde se pagan los bloques.',
+      'Requiere que cada nodo comparta su RPC, que está desactivado por defecto: ahora el servicio lo indica como tarea en lugar de no arrancar. Puedes elegir tú mismo el nombre del trabajador en Pagos. Por lo demás, primera versión.',
     de_DE:
-      'Erste Veröffentlichung. Solo-Merge-Mining von Dogecoin und Litecoin gegen deine eigenen Knoten — ein Scrypt-Hash, gegen beide Ziele geprüft, ohne Pool und ohne Gebühr. Beide Knoten-Pakete müssen installiert und vollständig synchronisiert sein, und der Dienst startet erst, wenn du festgelegt hast, wohin Blöcke zahlen.',
+      'Setzt voraus, dass jeder Knoten sein RPC teilt, was standardmäßig aus ist — der Dienst sagt das jetzt als Aufgabe, statt nicht zu starten. Den Worker-Namen kannst du unter Auszahlungen selbst festlegen. Ansonsten die erste Veröffentlichung.',
     pl_PL:
-      'Pierwsze wydanie. Samodzielne kopanie łączone Dogecoina i Litecoina na własnych węzłach — jeden skrót scrypt sprawdzany względem obu celów, bez poolu i bez prowizji. Oba pakiety węzłów muszą być zainstalowane i w pełni zsynchronizowane, a usługa nie uruchomi się, dopóki nie wybierzesz, gdzie trafiają bloki.',
+      'Wymaga, by każdy węzeł udostępniał swoje RPC, co domyślnie jest wyłączone — usługa mówi o tym teraz jako o zadaniu, zamiast nie startować. Nazwę koparki możesz ustawić sam w Wypłatach. Poza tym pierwsze wydanie.',
     fr_FR:
-      'Première version. Mine en solo Dogecoin et Litecoin en minage fusionné sur vos propres nœuds — un seul hachage scrypt testé contre les deux cibles, sans pool ni frais. Les deux paquets de nœud doivent être installés et entièrement synchronisés, et le service ne démarrera pas tant que vous n’aurez pas choisi où paient les blocs.',
+      'Nécessite que chaque nœud partage son RPC, ce qui est désactivé par défaut — le service l’indique désormais sous forme de tâche au lieu de ne pas démarrer. Vous pouvez définir vous-même le nom du mineur dans Paiements. Première version par ailleurs.',
   },
   migrations: {
     up: async ({ effects }) => {},

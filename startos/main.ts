@@ -50,8 +50,17 @@ export const main = sdk.setupMain(async ({ effects }) => {
       .const()
       .catch(() => null)
     if (!addr) {
+      /* Almost always one thing: that node is not sharing its RPC. The
+       * toggle defaults to off, checkDependencies does not cover it, and the
+       * bare "cannot reach" this used to throw sent people looking at the
+       * network. init/rpcTask.ts raises a task for this before start, so
+       * reaching here means the task was dismissed or the toggle was turned
+       * back off — either way, say which switch. */
       throw new Error(
-        i18n('Cannot reach the ${chain} node over RPC', { chain: label }),
+        i18n(
+          'The ${chain} node is not sharing its RPC. Open that service’s config, turn on “Share node RPC with other packages” and save, then start this one.',
+          { chain: label },
+        ),
       )
     }
     return addr
@@ -124,6 +133,11 @@ export const main = sdk.setupMain(async ({ effects }) => {
            * refuses to hand out work. See startos/fileModels/store.json.ts
            * for why a blank address is not good enough. */
           PAYOUT_MODE: payoutMode,
+          /* The operator's own label for this server. The stratum accepts
+           * ANY username, so this is only what the dashboard suggests --
+           * but without it the dashboard has nothing to suggest until a
+           * miner has already connected, which is the wrong way round. */
+          WORKER_ACCOUNT: store?.workerAccount ?? '',
           PAYOUT_ADDRESS: store?.ltcAddress ?? '',
           AUX_PAYOUT_ADDRESS: store?.dogeAddress ?? '',
 

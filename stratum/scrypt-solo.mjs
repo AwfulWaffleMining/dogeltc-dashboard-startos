@@ -1882,6 +1882,11 @@ function statsSnapshot(srv, now = Date.now()) {
     startedAt: srv.startedAt,
     uptimeSeconds: Math.round((now - srv.startedAt) / 1000),
     payoutMode: process.env.PAYOUT_MODE || 'unset',
+    /* What the dashboard should suggest as a username. Only a suggestion:
+       mining.authorize accepts any name, and the meter reports what miners
+       actually sent. Carried so the Connect tab has something real to show
+       before the first miner has ever connected. */
+    workerAccount: process.env.WORKER_ACCOUNT || '',
     /* The addresses blocks will actually pay, read off the live job rather
        than echoed from config, so the dashboard shows what is true rather
        than what was configured.
