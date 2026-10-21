@@ -60,6 +60,7 @@ export default {
     38: 'Nombre del trabajador',
     39: 'La parte del nombre de usuario de tus mineros antes del punto: una etiqueta para este servidor, no una contraseña. Déjalo en blanco y se generará uno. Cada equipo añade después su propio sufijo: tunombre.rig1, tunombre.garaje.',
     40: 'Solo letras, números, guion bajo y guion, hasta 32 caracteres. Sin puntos ni comas: esos separan las partes de un nombre de usuario.',
+    41: 'Apunta aquí tus ASIC de scrypt. Una sola conexión mina ambas cadenas.',
   },
   de_DE: {
     0: 'Auszahlungen',
@@ -103,6 +104,7 @@ export default {
     38: 'Worker-Name',
     39: 'Der Teil des Benutzernamens deiner Miner vor dem Punkt — eine Bezeichnung für diesen Server, kein Passwort. Lass ihn leer, dann wird einer erzeugt. Jedes Gerät hängt dann sein eigenes Suffix an: deinname.rig1, deinname.garage.',
     40: 'Nur Buchstaben, Ziffern, Unterstrich und Bindestrich, bis zu 32 Zeichen. Keine Punkte oder Kommas: die trennen die Teile eines Benutzernamens.',
+    41: 'Richte deine Scrypt-ASICs hierher. Eine Verbindung mint beide Chains.',
   },
   pl_PL: {
     0: 'Wypłaty',
@@ -146,6 +148,7 @@ export default {
     38: 'Nazwa koparki',
     39: 'Część nazwy użytkownika Twoich koparek przed kropką — etykieta tego serwera, nie hasło. Zostaw puste, a zostanie wygenerowana. Każde urządzenie dodaje potem własny przyrostek: twojanazwa.rig1, twojanazwa.garaz.',
     40: 'Tylko litery, cyfry, podkreślenie i myślnik, do 32 znaków. Bez kropek i przecinków: one oddzielają części nazwy użytkownika.',
+    41: 'Skieruj tutaj swoje koparki ASIC scrypt. Jedno połączenie kopie obie sieci.',
   },
   fr_FR: {
     0: 'Paiements',
@@ -189,5 +192,6 @@ export default {
     38: 'Nom du mineur',
     39: 'La partie du nom d’utilisateur de vos mineurs avant le point — une étiquette pour ce serveur, pas un mot de passe. Laissez-le vide et un nom sera généré. Chaque machine ajoute ensuite son propre suffixe : votrenom.rig1, votrenom.garage.',
     40: 'Lettres, chiffres, tiret bas et tiret uniquement, jusqu’à 32 caractères. Pas de points ni de virgules : ils séparent les parties d’un nom d’utilisateur.',
+    41: 'Dirigez vos ASIC scrypt ici. Une seule connexion mine les deux chaînes.',
   },
 } satisfies Record<string, LangDict>

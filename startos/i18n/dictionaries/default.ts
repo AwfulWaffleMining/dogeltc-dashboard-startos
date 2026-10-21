@@ -46,6 +46,7 @@ const dict = {
   'Worker name': 38,
   'The part of your miners’ username before the dot — a label for this server, not a password. Leave it blank and one is generated. Each rig then adds its own suffix: yourname.rig1, yourname.garage.': 39,
   'Letters, numbers, underscore and hyphen only, up to 32 characters. No dots or commas: those separate the parts of a username.': 40,
+  'Point your scrypt ASICs here. One connection mines both chains.': 41,
 } as const
 
 /**
