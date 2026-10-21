@@ -101,16 +101,32 @@ export const payoutConfig = sdk.Action.withInput(
 
   async ({ effects }) => {
     const s = await storeJson.read().once()
-    if (!s || s.payoutMode === 'unset') return null
-    return {
-      payout:
-        s.payoutMode === 'addresses'
-          ? {
-              selection: 'addresses' as const,
-              value: { ltcAddress: s.ltcAddress, dogeAddress: s.dogeAddress },
-            }
-          : { selection: 'nodeWallet' as const, value: {} },
+    /* Returns the 'unset' variant rather than null, so the start-gate task in
+     * init/payoutTask.ts always has a concrete value to compare its accept
+     * list against. A null input would have to be treated as "matches
+     * nothing" by the host for the gate to hold, and that is an assumption
+     * about someone else's code sitting underneath the one decision that
+     * controls where money goes. */
+    if (!s || s.payoutMode === 'unset') {
+      return { payout: { selection: 'unset' as const, value: {} } }
     }
+    /* Each stored mode maps to ITS OWN variant. An earlier revision sent
+     * everything that was not 'addresses' down the nodeWallet branch, which
+     * predates workerName existing — reopening the form then showed the wrong
+     * choice already selected, and the start-gate task below decides whether
+     * it is satisfied by reading exactly this value. */
+    if (s.payoutMode === 'addresses') {
+      return {
+        payout: {
+          selection: 'addresses' as const,
+          value: { ltcAddress: s.ltcAddress, dogeAddress: s.dogeAddress },
+        },
+      }
+    }
+    if (s.payoutMode === 'workerName') {
+      return { payout: { selection: 'workerName' as const, value: {} } }
+    }
+    return { payout: { selection: 'nodeWallet' as const, value: {} } }
   },
 
   async ({ effects, input }) => {

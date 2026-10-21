@@ -22,7 +22,7 @@ Syncing both takes a while — Dogecoin is the longer of the two. There is nothi
 
 ## Setting it up
 
-**1. Choose where blocks pay.** Open **Payouts** in this service's settings. There is no default, on purpose: a half-finished setup that mines into nowhere looks exactly like a working one until the day you win.
+**1. Choose where blocks pay.** The service will not start until you do — StartOS shows this as a task on the service page, and **Start stays disabled** until it is answered. Open **Payouts** in this service's settings. There is no default, on purpose: a half-finished setup that mines into nowhere looks exactly like a working one until the day you win.
 
 - **Pay to addresses I control** — you supply a Litecoin address and a Dogecoin address. Blocks pay straight to wallets you already hold, with nothing spendable sitting on this server. Both are checked by the node that would have to pay them, so a typo is caught now rather than on the day it costs you a block.
 - **Pay into each node's own wallet** — every block pays a fresh address the node generates for it, and no address is stored in this service. Slightly better privacy on-chain, but **back up both nodes**: their wallet files become the only record of what you were paid, and a found block cannot be recovered without them.
