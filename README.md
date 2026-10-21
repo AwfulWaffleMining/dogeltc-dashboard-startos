@@ -58,12 +58,13 @@ One stratum port serves both chains. Merge mining is a single connection; a mine
 
 Payout addresses are config, never part of a worker name. That matters twice over: stratum v1 is plaintext, so the pool convention of `LTC_ADDRESS,DOGE_ADDRESS.RIG_ID` puts both addresses on the wire on every connect; and it is ~85 characters with a comma in it, which Canaan/Avalon firmware rejects outright.
 
-Payouts have four states, and `unset` is the shipped one:
+Payouts have three states, and `unset` is the shipped one:
 
 - **unset** — the stratum does *not* bind its port. A server that accepts miners and hands out work it cannot pay for is worse than one plainly off.
 - **addresses** — pays addresses the operator controls, off this server.
-- **nodeWallet** — a genuinely fresh address per block: `JobManager` asks each node for one on every template, so the claim is literal rather than aspirational. Better on-chain privacy; the wallet files then become the only record of what you were paid.
 - **workerName** — nothing stored. Each miner authorizes as `LTC_ADDRESS,DOGE_ADDRESS.RIG` and gets its own job built around those addresses. A plain username is refused, because it has nowhere to pay. This binds the port: it is a choice, not an absence.
+
+There is deliberately no "pay into the node's own wallet" mode. It existed briefly and was removed: `litecoin-startos` ships no wallet, because Core stopped auto-creating the default one in 0.21, so `getnewaddress` answers `error -18`. Dogecoin 1.14 still auto-creates one, which makes the failure asymmetric — half the pair resolves, half does not.
 
 **Jobs are keyed by payout target.** The coinbase pays the address and sits in the merkle root the miner hashes, so miners with different addresses need different jobs — but all of one person's rigs share a target, so the home case costs what a single-address server costs. Capped at 8 targets: the username is attacker-controlled on any reachable LAN, and each target costs an RPC per template on both chains.
 

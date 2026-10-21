@@ -14,7 +14,6 @@ export const shape = z
      * is found and there is nowhere to pay it.
      *
      * 'addresses' pays to addresses the operator controls, off this server.
-     * 'nodeWallet' asks each node for a fresh address at template time.
      *
      * The real axis is custody, not privacy. Either way the address ends up
      * in a coinbase transaction and is public forever; what differs is
@@ -23,12 +22,10 @@ export const shape = z
      * becomes the one irreplaceable thing in the backup. A static configured
      * address is in fact the WORSE of the two for on-chain privacy, since
      * every block found links to it, while getnewaddress rotates. */
-    payoutMode: z
-      .enum(['unset', 'addresses', 'nodeWallet', 'workerName'])
-      .catch('unset'),
+    payoutMode: z.enum(['unset', 'addresses', 'workerName']).catch('unset'),
 
     /* Only populated under payoutMode 'addresses'. Someone who picks
-     * 'nodeWallet' has no address stored here at all — structurally, not by
+     * 'workerName' has no address stored here at all — structurally, not by
      * convention. Both are validated by the node that will have to pay them
      * before they are accepted: litecoind's `validateaddress` and dogecoin's
      * `createauxblock`, which rejects a bad payout address itself. */

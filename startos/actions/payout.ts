@@ -87,12 +87,8 @@ export const payoutConfig = sdk.Action.withInput(
             }),
           }),
         },
-        nodeWallet: {
-          name: i18n("Pay into each node's own wallet"),
-          spec: InputSpec.of({}),
-        },
         workerName: {
-          name: i18n('Do not store my addresses — I will send them per miner'),
+          name: i18n('Do not store my addresses on this server'),
           spec: InputSpec.of({}),
         },
       }),
@@ -110,11 +106,9 @@ export const payoutConfig = sdk.Action.withInput(
     if (!s || s.payoutMode === 'unset') {
       return { payout: { selection: 'unset' as const, value: {} } }
     }
-    /* Each stored mode maps to ITS OWN variant. An earlier revision sent
-     * everything that was not 'addresses' down the nodeWallet branch, which
-     * predates workerName existing — reopening the form then showed the wrong
-     * choice already selected, and the start-gate task below decides whether
-     * it is satisfied by reading exactly this value. */
+    /* Each stored mode maps to ITS OWN variant, and the start-gate task in
+     * init/payoutTask.ts decides whether it is satisfied by reading exactly
+     * this value. */
     if (s.payoutMode === 'addresses') {
       return {
         payout: {
@@ -123,10 +117,7 @@ export const payoutConfig = sdk.Action.withInput(
         },
       }
     }
-    if (s.payoutMode === 'workerName') {
-      return { payout: { selection: 'workerName' as const, value: {} } }
-    }
-    return { payout: { selection: 'nodeWallet' as const, value: {} } }
+    return { payout: { selection: 'workerName' as const, value: {} } }
   },
 
   async ({ effects, input }) => {
@@ -172,31 +163,6 @@ export const payoutConfig = sdk.Action.withInput(
         result: {
           type: 'single' as const,
           value: 'LITECOIN_ADDRESS,DOGECOIN_ADDRESS.rig1',
-          copyable: true,
-          masked: false,
-          qr: false,
-        },
-      }
-    }
-
-    if (sel === 'nodeWallet') {
-      await storeJson.merge(effects, {
-        payoutMode: 'nodeWallet',
-        /* Cleared rather than kept: someone opting out should not leave an
-         * address behind in store.json. The absence is the point. */
-        ltcAddress: '',
-        dogeAddress: '',
-        workerAccount,
-      })
-      return {
-        version: '1' as const,
-        title: i18n('Paying into the node wallets'),
-        message: i18n(
-          'Each block will pay to a fresh address from that chain’s own node wallet. Nothing is stored here. Back up both nodes: their wallet files become the only record of what you have been paid, and a found block cannot be recovered without them.',
-        ),
-        result: {
-          type: 'single' as const,
-          value: `${workerAccount}.rig1`,
           copyable: true,
           masked: false,
           qr: false,

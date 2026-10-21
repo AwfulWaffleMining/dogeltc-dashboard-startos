@@ -234,7 +234,7 @@ type stratumStats struct {
 	Uptime     int64  `json:"uptimeSeconds"`
 	PayoutMode string `json:"payoutMode"`
 	// Where blocks actually pay, read off the live job rather than echoed
-	// from config: under nodeWallet the address changes every template.
+	// from config, so this reports what will be paid rather than what was set.
 	PayoutAddresses []PayoutTarget      `json:"payoutAddresses"`
 	Accounts        []statsAccount      `json:"accounts"`
 	Workers         []statsWorker       `json:"workers"`

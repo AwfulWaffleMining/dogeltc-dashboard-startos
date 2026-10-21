@@ -756,11 +756,16 @@ class JobManager {
    * every rig in one household points at the same two wallets, so the common
    * case is exactly one target and exactly the RPC cost of the old code.
    *
-   * A target is one of:
-   *   fixed      -- addresses from the service config, or parsed from a
-   *                 worker name by an operator who chose not to store them
-   *   nodeWallet -- resolved fresh from each node on every template, so the
-   *                 promise of a new address per block is literally true
+   * Every target is a pair of addresses: either the two stored in the
+   * service config, or two a miner supplied in its worker name because the
+   * operator chose not to store them here.
+   *
+   * There is deliberately no "pay into the node's own wallet" target. The
+   * Litecoin package ships no wallet -- Core stopped auto-creating the
+   * default one in 0.21, and the package does not create it -- so
+   * `getnewaddress` answers error -18 and there is nothing to pay. Dogecoin
+   * 1.14 still auto-creates one, which makes the failure asymmetric and
+   * therefore worse: half the pair would work.
    */
   /* defaultTarget may be null: in workerName mode the operator stores no
      addresses at all, so there is nothing to pay until a miner says where.
@@ -773,7 +778,7 @@ class JobManager {
   }
 
   static key(t) {
-    return t.kind === 'nodeWallet' ? 'nodeWallet' : `${t.ltc}|${t.doge ?? ''}`;
+    return `${t.ltc}|${t.doge ?? ''}`;
   }
 
   /* Validated HERE rather than at first use. A malformed address that only
@@ -782,11 +787,9 @@ class JobManager {
   addTarget(t) {
     const key = JobManager.key(t);
     if (this.targets.has(key)) return key;
-    if (t.kind !== 'nodeWallet') {
-      addressToScript(t.ltc);                       // throws on a bad address
-      if (AUX_ENABLED && !t.doge) {
-        throw new Error('merge mining needs a Dogecoin address as well as a Litecoin one');
-      }
+    addressToScript(t.ltc);                         // throws on a bad address
+    if (AUX_ENABLED && !t.doge) {
+      throw new Error('merge mining needs a Dogecoin address as well as a Litecoin one');
     }
     this.targets.set(key, { ...t, key, current: null });
     return key;
@@ -816,17 +819,6 @@ class JobManager {
     return t ? t.current : null;
   }
 
-  /* Resolve the pair of addresses this target pays, for this template.
-     Fixed targets answer from memory; nodeWallet asks each node, which is
-     what makes "a fresh address per block" true rather than aspirational. */
-  async addressesFor(target) {
-    if (target.kind !== 'nodeWallet') return { ltc: target.ltc, doge: target.doge };
-    const ltc = await rpc('getnewaddress');
-    let doge = null;
-    if (AUX_ENABLED) doge = await auxRpc('getnewaddress');
-    return { ltc, doge };
-  }
-
   async refresh() {
     /* The rule set is per-chain and NOT optional on Litecoin.
      *
@@ -845,10 +837,10 @@ class JobManager {
     const unchanged = prev
       && prev.previousblockhash === t.previousblockhash
       && (prev.transactions || []).length === (t.transactions || []).length;
-    /* nodeWallet must rebuild even on an unchanged template: its whole point
-       is a different address each time, and skipping the rebuild would quietly
-       reuse the last one. */
-    const anyFresh = [...this.targets.values()].some((x) => x.kind === 'nodeWallet' || !x.current);
+    /* A target with no job yet still needs one built, even when the template
+       has not moved: that is how a miner which connected mid-template gets
+       work without waiting for the next one. */
+    const anyFresh = [...this.targets.values()].some((x) => !x.current);
     if (unchanged && !anyFresh) return null;
     if (this.targets.size === 0) { this.lastTemplate = t; return null; }
 
@@ -874,7 +866,7 @@ class JobManager {
   }
 
   async buildFor(target, t, tipMoved) {
-    const { ltc, doge } = await this.addressesFor(target);
+    const { ltc, doge } = target;
     const payoutScript = addressToScript(ltc);
     const txs = t.transactions || [];
     /* Supplied by chains with segwit active, absent on Dogecoin 1.14. Taken
@@ -1891,8 +1883,8 @@ function statsSnapshot(srv, now = Date.now()) {
     uptimeSeconds: Math.round((now - srv.startedAt) / 1000),
     payoutMode: process.env.PAYOUT_MODE || 'unset',
     /* The addresses blocks will actually pay, read off the live job rather
-       than echoed from config: the two can differ (nodeWallet resolves a new
-       one per template), and the dashboard's job is to show what is true.
+       than echoed from config, so the dashboard shows what is true rather
+       than what was configured.
        Loopback-only API, and a receiving address is public anyway -- it is on
        chain the moment it is paid. */
     payoutAddresses: srv.jobs
@@ -2002,10 +1994,9 @@ async function run() {
 
   const auxAddr = process.env.AUX_PAYOUT_ADDRESS || null;
 
-  /* nodeWallet carries NO addresses by design -- the action clears them, and
-     the point is that nothing is stored. Each template then asks the node
-     itself, so "a fresh address per block" is literally what happens rather
-     than a claim the architecture cannot keep. */
+  /* Two answers, and they are the only two. Either the operator stored a
+     pair of addresses here, or they declined to and every miner brings its
+     own. There is no third "let the node decide": see JobManager. */
   let defaultTarget;
   if (mode === 'workerName') {
     /* Distinct from 'unset'. The operator HAS chosen: they chose not to keep
@@ -2014,14 +2005,11 @@ async function run() {
        where to pay. */
     defaultTarget = null;
     log('no addresses stored; miners must authorize as LTC_ADDRESS,DOGE_ADDRESS.RIG');
-  } else if (mode === 'nodeWallet') {
-    defaultTarget = { kind: 'nodeWallet' };
-    log('paying into each node\u2019s own wallet; a fresh address per block');
   } else {
     if (!addr) {
       throw new Error(
         'PAYOUT_MODE=' + mode + ' but PAYOUT_ADDRESS is empty. Set an address,\n'
-        + 'or use PAYOUT_MODE=nodeWallet to pay into the nodes\u2019 own wallets.');
+        + 'or use PAYOUT_MODE=workerName and have each miner send its own.');
     }
     if (AUX_ENABLED && !auxAddr) {
       throw new Error(

@@ -11,9 +11,9 @@ import { sdk } from '../sdk'
  * shares, and the operator would learn the truth on the one day it costs them
  * a block. StartOS can refuse to start it, so it should.
  *
- * Satisfied by ANY of the three real answers, including both ways of saying
- * "do not keep my addresses here". It is an opt-in-or-opt-out, not a demand
- * for addresses: refusing to store them is a complete answer.
+ * Satisfied by EITHER real answer. It is an opt-in-or-opt-out, not a demand
+ * for addresses: declining to store them is a complete answer, and the one
+ * state that leaves this pending is having said nothing at all.
  *
  * Declared with 'input-not-matches' rather than cleared by hand. The task is
  * satisfied whenever the action's current input matches an accepted variant,
@@ -28,13 +28,12 @@ export const payoutTask = sdk.setupOnInit(async (effects) => {
       kind: 'partial',
       accept: [
         { payout: { selection: 'addresses' } },
-        { payout: { selection: 'nodeWallet' } },
         { payout: { selection: 'workerName' } },
       ],
       set: { payout: { selection: 'addresses' } },
     },
     reason: i18n(
-      'Choose where a found block pays before mining starts. Save two addresses, pay into the nodes’ own wallets, or decline to store anything and send them per miner — any of the three is a complete answer. There is no default, because a server mining into nowhere looks exactly like a working one until the day you win.',
+      'Choose where a found block pays before mining starts. Either save your Litecoin and Dogecoin addresses here, or decline to store them and have each miner send them instead — both are complete answers. There is no default, because a server mining into nowhere looks exactly like a working one until the day you win.',
     ),
   })
 })

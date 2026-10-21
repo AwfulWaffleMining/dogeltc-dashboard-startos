@@ -24,13 +24,12 @@ Syncing both takes a while — Dogecoin is the longer of the two. There is nothi
 
 **1. Choose where blocks pay.** The service will not start until you do — StartOS shows this as a task on the service page, and **Start stays disabled** until it is answered. Open **Payouts** in this service's settings. There is no default, on purpose: a half-finished setup that mines into nowhere looks exactly like a working one until the day you win.
 
-- **Pay to addresses I control** — you supply a Litecoin address and a Dogecoin address. Blocks pay straight to wallets you already hold, with nothing spendable sitting on this server. Both are checked by the node that would have to pay them, so a typo is caught now rather than on the day it costs you a block.
-- **Pay into each node's own wallet** — every block pays a fresh address the node generates for it, and no address is stored in this service. Slightly better privacy on-chain, but **back up both nodes**: their wallet files become the only record of what you were paid, and a found block cannot be recovered without them.
-- **Don't store my addresses** — nothing is kept on this server at all. Instead each miner sends both of your addresses in its username, in the form `LITECOIN_ADDRESS,DOGECOIN_ADDRESS.rig1`. The dashboard builds that string for you.
+- **Pay to addresses I control** — you type a Litecoin address and a Dogecoin address. Blocks pay straight to wallets you already hold, with nothing spendable sitting on this server. Both are checked by the node that would have to pay them, so a typo is caught now rather than on the day it costs you a block.
+- **Don't store my addresses on this server** — nothing is kept here at all. Instead each miner sends both of your addresses in its username, in the form `LITECOIN_ADDRESS,DOGECOIN_ADDRESS.rig1`. The dashboard builds that string for you.
 
-The third option costs you two things, and they are the reason it isn't the default. Mining traffic isn't encrypted, so both addresses cross your network every time a miner reconnects. And the username runs about 85 characters with a comma in it — **some Canaan and Avalon firmware refuses a username that long, or one containing a comma.** If a miner won't take it, switch to the first option.
+The second option costs you two things, and they are the reason it isn't the default. Mining traffic isn't encrypted, so both addresses cross your network every time a miner reconnects. And the username runs about 85 characters with a comma in it — **some Canaan and Avalon firmware refuses a username that long, or one containing a comma.** If a miner won't take it, switch to the first option.
 
-All three options pay addresses you control. What differs is where the coins land and what you have to back up.
+Both options pay addresses you control. What differs is whether this server keeps a copy of them.
 
 **2. Point your miners here.** Open **How to connect** in the dashboard. It shows the exact stratum address and a worker name, ready to copy.
 

@@ -53,6 +53,8 @@ export default {
     31: 'No se guarda nada — configura el usuario de cada minero',
     32: 'No se guarda ninguna dirección en este servidor. Cada minero debe autenticarse con tus dos direcciones en su nombre de usuario, exactamente en esta forma, cambiando solo la parte posterior al punto en cada equipo:\n\n    DIRECCION_LITECOIN,DIRECCION_DOGECOIN.rig1\n\nEl stratum comprueba ambas y rechaza a un minero cuyas direcciones no sean válidas, de modo que un error se detecta al conectar y no cuando se encuentra un bloque. Dos costes a tener en cuenta: stratum va en texto plano, así que ambas direcciones circulan por tu red en cada reconexión, y el usuario ocupa unos 85 caracteres e incluye una coma, algo que algunos firmwares de Canaan y Avalon no aceptan. El panel construye la cadena por ti en «Cómo conectar».',
     33: 'Elige dónde se paga un bloque encontrado antes de empezar a minar. Guarda dos direcciones, paga a los monederos de los propios nodos, o niégate a guardar nada y envíalas en cada minero: cualquiera de las tres es una respuesta completa. No hay valor por defecto, porque un servidor que mina hacia la nada parece exactamente uno que funciona hasta el día en que ganas.',
+    34: 'No guardar mis direcciones en este servidor',
+    35: 'Elige dónde se paga un bloque encontrado antes de empezar a minar. Guarda aquí tus direcciones de Litecoin y Dogecoin, o niégate a guardarlas y haz que cada minero las envíe: ambas son respuestas completas. No hay valor por defecto, porque un servidor que mina hacia la nada parece exactamente uno que funciona hasta el día en que ganas.',
   },
   de_DE: {
     0: 'Auszahlungen',
@@ -89,6 +91,8 @@ export default {
     31: 'Nichts gespeichert — Benutzernamen je Miner setzen',
     32: 'Auf diesem Server wird keine Adresse gespeichert. Jeder Miner muss sich mit beiden Adressen im Benutzernamen anmelden, genau in dieser Form, wobei nur der Teil nach dem Punkt je Gerät geändert wird:\n\n    LITECOIN_ADRESSE,DOGECOIN_ADRESSE.rig1\n\nDas Stratum prüft beide und weist einen Miner ab, dessen Adressen sich nicht dekodieren lassen — ein Tippfehler fällt also beim Verbinden auf und nicht erst, wenn ein Block gefunden wird. Zwei Nachteile: Stratum ist unverschlüsselt, beide Adressen gehen bei jeder Neuverbindung über dein Netz, und der Benutzername ist etwa 85 Zeichen lang und enthält ein Komma, was manche Canaan- und Avalon-Firmware ablehnt. Das Dashboard baut die Zeichenkette unter „Verbinden“ für dich.',
     33: 'Lege fest, wohin ein gefundener Block zahlt, bevor das Mining startet. Speichere zwei Adressen, zahle in die Wallets der Knoten selbst, oder speichere gar nichts und sende sie je Miner — alle drei sind eine vollständige Antwort. Es gibt keinen Standardwert, denn ein Server, der ins Leere mint, sieht genau wie ein funktionierender aus, bis zu dem Tag, an dem du gewinnst.',
+    34: 'Meine Adressen nicht auf diesem Server speichern',
+    35: 'Lege fest, wohin ein gefundener Block zahlt, bevor das Mining startet. Speichere deine Litecoin- und Dogecoin-Adresse hier, oder speichere sie nicht und lasse jeden Miner sie senden — beides ist eine vollständige Antwort. Es gibt keinen Standardwert, denn ein Server, der ins Leere mint, sieht genau wie ein funktionierender aus, bis zu dem Tag, an dem du gewinnst.',
   },
   pl_PL: {
     0: 'Wypłaty',
@@ -125,6 +129,8 @@ export default {
     31: 'Nic nie zapisano — ustaw nazwę użytkownika w każdej koparce',
     32: 'Na tym serwerze nie jest przechowywany żaden adres. Każda koparka musi logować się, podając oba Twoje adresy w nazwie użytkownika, dokładnie w tej postaci, zmieniając tylko część po kropce dla każdego urządzenia:\n\n    ADRES_LITECOIN,ADRES_DOGECOIN.rig1\n\nStratum sprawdza oba i odrzuca koparkę, której adresy są nieprawidłowe, więc literówka wychodzi na jaw przy łączeniu, a nie dopiero po znalezieniu bloku. Dwa koszty: stratum działa otwartym tekstem, więc oba adresy przechodzą przez sieć przy każdym ponownym połączeniu, a nazwa użytkownika ma około 85 znaków i zawiera przecinek, czego część firmware’ów Canaan i Avalon nie akceptuje. Panel zbuduje ten ciąg za Ciebie w sekcji „Jak połączyć”.',
     33: 'Zdecyduj, gdzie trafi znaleziony blok, zanim zacznie się kopanie. Zapisz dwa adresy, płać do portfeli samych węzłów albo nie zapisuj niczego i wysyłaj je w każdej koparce — każda z tych trzech odpowiedzi jest pełna. Nie ma wartości domyślnej, bo serwer kopiący donikąd wygląda dokładnie jak działający, aż do dnia, w którym wygrasz.',
+    34: 'Nie zapisuj moich adresów na tym serwerze',
+    35: 'Zdecyduj, gdzie trafi znaleziony blok, zanim zacznie się kopanie. Zapisz tutaj swoje adresy Litecoina i Dogecoina albo odmów ich zapisania i pozwól, by każda koparka je wysyłała — obie odpowiedzi są pełne. Nie ma wartości domyślnej, bo serwer kopiący donikąd wygląda dokładnie jak działający, aż do dnia, w którym wygrasz.',
   },
   fr_FR: {
     0: 'Paiements',
@@ -161,5 +167,7 @@ export default {
     31: 'Rien n’est enregistré — définissez le nom d’utilisateur de chaque mineur',
     32: 'Aucune adresse n’est conservée sur ce serveur. Chaque mineur doit s’authentifier avec vos deux adresses dans son nom d’utilisateur, exactement sous cette forme, en ne changeant que la partie après le point pour chaque machine :\n\n    ADRESSE_LITECOIN,ADRESSE_DOGECOIN.rig1\n\nLe stratum vérifie les deux et refuse un mineur dont les adresses ne sont pas valides : une faute de frappe est donc détectée à la connexion, et non le jour où un bloc est trouvé. Deux inconvénients : le stratum circule en clair, donc les deux adresses traversent votre réseau à chaque reconnexion, et le nom d’utilisateur fait environ 85 caractères et contient une virgule, ce que certains firmwares Canaan et Avalon refusent. Le tableau de bord construit la chaîne pour vous dans « Comment se connecter ».',
     33: 'Choisissez où paiera un bloc trouvé avant que le minage ne commence. Enregistrez deux adresses, payez dans les portefeuilles des nœuds eux-mêmes, ou refusez de rien enregistrer et envoyez-les par mineur : chacune des trois est une réponse complète. Il n’y a pas de valeur par défaut, car un serveur qui mine dans le vide ressemble exactement à un serveur qui fonctionne, jusqu’au jour où vous gagnez.',
+    34: 'Ne pas enregistrer mes adresses sur ce serveur',
+    35: 'Choisissez où paiera un bloc trouvé avant que le minage ne commence. Enregistrez ici vos adresses Litecoin et Dogecoin, ou refusez de les enregistrer et laissez chaque mineur les envoyer : les deux sont des réponses complètes. Il n’y a pas de valeur par défaut, car un serveur qui mine dans le vide ressemble exactement à un serveur qui fonctionne, jusqu’au jour où vous gagnez.',
   },
 } satisfies Record<string, LangDict>

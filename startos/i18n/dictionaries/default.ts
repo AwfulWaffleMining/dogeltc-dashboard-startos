@@ -39,6 +39,8 @@ const dict = {
   'Nothing stored — set each miner’s username': 31,
   'No address is kept on this server. Each miner must authorize with both of your addresses in its username, in this exact form, changing only the part after the dot per rig:\n\n    LITECOIN_ADDRESS,DOGECOIN_ADDRESS.rig1\n\nThe stratum checks both and refuses a miner whose addresses do not decode, so a typo is caught at connect rather than when a block is found. Two costs to know about: stratum is plaintext, so both addresses cross your network on every reconnect, and the username runs about 85 characters with a comma in it, which some Canaan and Avalon firmware will not accept. The dashboard builds the string for you under How to connect.': 32,
   'Choose where a found block pays before mining starts. Save two addresses, pay into the nodes’ own wallets, or decline to store anything and send them per miner — any of the three is a complete answer. There is no default, because a server mining into nowhere looks exactly like a working one until the day you win.': 33,
+  'Do not store my addresses on this server': 34,
+  'Choose where a found block pays before mining starts. Either save your Litecoin and Dogecoin addresses here, or decline to store them and have each miner send them instead — both are complete answers. There is no default, because a server mining into nowhere looks exactly like a working one until the day you win.': 35,
 } as const
 
 /**
