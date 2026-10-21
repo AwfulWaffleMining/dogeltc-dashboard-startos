@@ -39,6 +39,10 @@ Use **one** connection per miner. Both coins come from that single connection �
 
 Your worker name has two parts: a label for this server, then a label for the machine. You can set the first part yourself in **Payouts** — leave it blank and one is generated. The second part is per rig: `yourname.rig1`, `yourname.garage`, so you can tell them apart in the dashboard.
 
+It is only a label. Nothing about it affects where a block pays — that comes from your addresses, and the server would accept any name you typed. It exists so the dashboard reads in your words instead of a generated string.
+
+If you chose not to store your addresses here, your miners still send the long `ADDRESS,ADDRESS.rig` username, but the dashboard shows them under your label rather than that string.
+
 Avoid dots and commas inside either part. A dot separates the two halves, and a comma is what the other payout mode uses to separate your two addresses.
 
 Your payout addresses are **not** part of the worker name, which is how some pools do it. They stay in settings, so they never travel over the network and never hit the character limits that make some ASIC firmware misbehave.

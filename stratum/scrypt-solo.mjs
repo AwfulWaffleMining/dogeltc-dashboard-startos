@@ -723,6 +723,32 @@ class ShareMeter {
  * reconnect, and the string runs ~85 characters with a comma in it, which
  * some Canaan/Avalon firmware refuses outright.
  */
+/* What the DASHBOARD calls this miner, which is not what the miner sent.
+ *
+ * A supplied-payout username is ~85 characters of address, so it never
+ * reaches the logs, the stats API or the page. The operator's own label goes
+ * there instead: `awfulwaffle.garage` rather than `ext955e26.garage`.
+ *
+ * The hash is kept as a suffix ONLY when a second, different address set is
+ * in play. Labelling two payees identically would misreport who mined what
+ * -- it cannot misdirect money, since payouts come from the job's addresses
+ * and never from a username, but a meter that merges two people is still
+ * wrong. With one operator and one wallet pair, which is this package's whole
+ * case, the suffix never appears.
+ *
+ * In stored-addresses mode the default target already exists, so a miner that
+ * supplies its own addresses is by definition a second set and gets the
+ * suffix. That is right: the configured name belongs to the configured
+ * addresses, and a miner paying somewhere else should not wear it.
+ */
+function displayAccount(supplied, jobs) {
+  const name = (process.env.WORKER_ACCOUNT || '').trim();
+  if (!name) return supplied.account;
+  return jobs.targets.size > 1
+    ? `${name}-${supplied.account.slice(3, 7)}`
+    : name;
+}
+
 function parseWorkerPayout(username) {
   const comma = username.indexOf(',');
   if (comma === -1) return null;
@@ -1114,7 +1140,9 @@ class StratumServer {
           this.send(client, { id, error: [24, why, null], result: false });
           return;
         }
-        client.worker = supplied ? `${supplied.account}.${supplied.rig}` : rawUser;
+        client.worker = supplied
+          ? `${displayAccount(supplied, this.jobs)}.${supplied.rig}`
+          : rawUser;
         client.suppliedPayout = Boolean(supplied);
 
         /* Stratum's "account.rig" convention maps onto the lease model with no
@@ -1795,9 +1823,14 @@ async function selftest() {
   /* With supplied addresses the account is the short handle derived from the
      pair, not the username: the 85-character form must never reach the meter,
      the logs or the dashboard. */
+  /* With supplied addresses the account is the operator's own label when one
+     is configured, and the derived handle otherwise. Either way the
+     85-character username must never reach the meter, the logs or the page. */
+  const configuredLabel = (process.env.WORKER_ACCOUNT || '').trim();
   const expectAccount = SUPPLIED
-    ? 'ext' + sha256(Buffer.from(`${SUPPLIED.slice(0, SUPPLIED.indexOf(','))}|`
-        + SUPPLIED.slice(SUPPLIED.indexOf(',') + 1, SUPPLIED.lastIndexOf('.')))).toString('hex').slice(0, 6)
+    ? configuredLabel
+      || 'ext' + sha256(Buffer.from(`${SUPPLIED.slice(0, SUPPLIED.indexOf(','))}|`
+          + SUPPLIED.slice(SUPPLIED.indexOf(',') + 1, SUPPLIED.lastIndexOf('.')))).toString('hex').slice(0, 6)
     : 'awm_00001';
   check('meter rolled the worker up under its account prefix',
         acct.length === 1 && acct[0].account === expectAccount && acct[0].rigs === 1,

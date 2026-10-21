@@ -69,27 +69,6 @@ export const payoutConfig = sdk.Action.withInput(
                 },
               ],
             }),
-            workerAccount: Value.text({
-              name: i18n('Worker name'),
-              description: i18n(
-                'The part of your miners’ username before the dot — a label for this server, not a password. Leave it blank and one is generated. Each rig then adds its own suffix: yourname.rig1, yourname.garage.',
-              ),
-              required: false,
-              default: null,
-              patterns: [
-                {
-                  /* No comma, because a comma is what separates the two
-                   * addresses in the other payout mode — a worker name
-                   * containing one would be parsed as a payout. No dot,
-                   * because that separates account from rig. Some ASIC
-                   * firmware is also unhappy with anything beyond this set. */
-                  regex: '^[A-Za-z0-9_-]{1,32}$',
-                  description: i18n(
-                    'Letters, numbers, underscore and hyphen only, up to 32 characters. No dots or commas: those separate the parts of a username.',
-                  ),
-                },
-              ],
-            }),
             dogeAddress: Value.text({
               name: i18n('Dogecoin address'),
               description: i18n(
@@ -114,6 +93,28 @@ export const payoutConfig = sdk.Action.withInput(
         },
       }),
     }),
+
+    workerAccount: Value.text({
+      name: i18n('Worker name'),
+      description: i18n(
+        'The part of your miners’ username before the dot — a label for this server, not a password. Leave it blank and one is generated. Each rig then adds its own suffix: yourname.rig1, yourname.garage.',
+      ),
+      required: false,
+      default: null,
+      patterns: [
+        {
+          /* No comma, because a comma is what separates the two
+           * addresses in the other payout mode — a worker name
+           * containing one would be parsed as a payout. No dot,
+           * because that separates account from rig. Some ASIC
+           * firmware is also unhappy with anything beyond this set. */
+          regex: '^[A-Za-z0-9_-]{1,32}$',
+          description: i18n(
+            'Letters, numbers, underscore and hyphen only, up to 32 characters. No dots or commas: those separate the parts of a username.',
+          ),
+        },
+      ],
+    }),
   }),
 
   async ({ effects }) => {
@@ -125,7 +126,10 @@ export const payoutConfig = sdk.Action.withInput(
      * about someone else's code sitting underneath the one decision that
      * controls where money goes. */
     if (!s || s.payoutMode === 'unset') {
-      return { payout: { selection: 'unset' as const, value: {} } }
+      return {
+        payout: { selection: 'unset' as const, value: {} },
+        workerAccount: null,
+      }
     }
     /* Each stored mode maps to ITS OWN variant, and the start-gate task in
      * init/payoutTask.ts decides whether it is satisfied by reading exactly
@@ -134,15 +138,15 @@ export const payoutConfig = sdk.Action.withInput(
       return {
         payout: {
           selection: 'addresses' as const,
-          value: {
-            ltcAddress: s.ltcAddress,
-            dogeAddress: s.dogeAddress,
-            workerAccount: s.workerAccount || null,
-          },
+          value: { ltcAddress: s.ltcAddress, dogeAddress: s.dogeAddress },
         },
+        workerAccount: s.workerAccount || null,
       }
     }
-    return { payout: { selection: 'workerName' as const, value: {} } }
+    return {
+      payout: { selection: 'workerName' as const, value: {} },
+      workerAccount: s.workerAccount || null,
+    }
   },
 
   async ({ effects, input }) => {
@@ -171,10 +175,10 @@ export const payoutConfig = sdk.Action.withInput(
     /* The operator's own name wins; otherwise keep whatever was generated
      * before, and only invent one the first time. Regenerating on every save
      * would rename every rig's username behind their back. */
-    const chosen =
-      input.payout.selection === 'addresses'
-        ? input.payout.value.workerAccount?.trim()
-        : null
+    /* Top-level, not inside a variant: the label applies however blocks are
+     * paid. It is cosmetic by design — the stratum accepts any username and
+     * decides payouts from addresses, never from this. */
+    const chosen = input.workerAccount?.trim()
     const workerAccount =
       chosen ||
       existing?.workerAccount ||
