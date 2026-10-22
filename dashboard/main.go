@@ -167,7 +167,15 @@ type store struct {
 	History map[string][]Sample  `json:"history"`
 	Blocks  []Block              `json:"blocks"`
 	Best    map[string]BestShare `json:"best"`
+	// Bumped when a stored field's MEANING changes, not its shape. Best was
+	// recorded against the wrong difficulty scale before v1, so those records
+	// are not merely stale -- they are wrong by 2^16, and because recordBest
+	// only ever replaces a lower luck with a higher one, a poisoned record is
+	// permanent. Blocks and History are unaffected and survive the bump.
+	Version int `json:"version"`
 }
+
+const storeVersion = 1
 
 // ── stratum stats, as the stratum serves them ──────────────────────────────
 
@@ -233,6 +241,10 @@ type stratumStats struct {
 	Now        int64  `json:"now"`
 	Uptime     int64  `json:"uptimeSeconds"`
 	PayoutMode string `json:"payoutMode"`
+	// Share difficulty here is quoted against a difficulty-1 that is
+	// 2^ScryptShift easier than the one a chain's RPC `difficulty` field uses.
+	// Anything comparing the two must scale, or it is out by 65,536.
+	ScryptShift int `json:"scryptShift"`
 	// Only a suggestion: mining.authorize accepts any username, and the meter
 	// reports what miners actually sent. Carried so the Connect tab has
 	// something real to show before the first miner has ever connected.
@@ -278,6 +290,7 @@ func newCollector(dataDir, stratum string, rpcs []chainRPC, port int) *collector
 	}
 	c.st.History = map[string][]Sample{}
 	c.st.Best = map[string]BestShare{}
+	c.st.Version = storeVersion
 	c.load()
 	return c
 }
@@ -300,7 +313,23 @@ func (c *collector) load() {
 	if s.Best == nil {
 		s.Best = map[string]BestShare{}
 	}
+	migrated := s.Version < storeVersion
+	if migrated {
+		if len(s.Best) > 0 {
+			log.Printf("discarding %d best-share record(s) written against the old difficulty scale", len(s.Best))
+		}
+		s.Best = map[string]BestShare{}
+		s.Version = storeVersion
+	}
 	c.st = s
+	/* Write the bump straight back rather than waiting for the poll loop's
+	   first save. Otherwise every restart before that save re-runs the
+	   migration, which is harmless but means the log keeps announcing a
+	   one-time event as though it were news. Safe here: load() runs in the
+	   constructor, before anything else can touch the store. */
+	if migrated {
+		c.save()
+	}
 	log.Printf("loaded %d blocks, %d history series", len(s.Blocks), len(s.History))
 }
 
@@ -572,6 +601,24 @@ func (c *collector) mergeBlocks(found []statsBlock) {
 // "ever" actually lives. Compared on LUCK rather than raw difficulty,
 // because difficulty is shared while the targets are not: the same share can
 // be a personal best against Dogecoin and unremarkable against Litecoin.
+/* The chain's RPC `difficulty` in the same units as a share's achieved
+   difficulty.
+
+   Bitcoin-family daemons report `difficulty` against Bitcoin's difficulty-1
+   target, whatever chain they are. Scrypt stratum difficulty is quoted
+   against a target 2^shift easier. Comparing them unscaled says a share
+   cleared the network target when it reached 0.0015% of it — which reads as
+   "you found a block" on a page whose whole job is to be honest about odds.
+
+   Only ever a fallback: the stratum reports networkDifficulty in share units
+   already, measured against the very target the share was tested on. */
+func rpcDiffToShareUnits(diff float64, shift int) float64 {
+	if shift <= 0 {
+		shift = 16
+	}
+	return diff * math.Pow(2, float64(shift))
+}
+
 func (c *collector) recordBest(s *stratumStats, chains map[string]ChainSummary) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -580,7 +627,7 @@ func (c *collector) recordBest(s *stratumStats, chains map[string]ChainSummary) 
 		if d, ok := s.NetDiff[name]; ok && d != nil {
 			netDiff = *d
 		} else if cs, ok := chains[name]; ok {
-			netDiff = cs.Difficulty
+			netDiff = rpcDiffToShareUnits(cs.Difficulty, s.ScryptShift)
 		}
 		if netDiff <= 0 {
 			continue
@@ -816,7 +863,7 @@ func (c *collector) handleShares(w http.ResponseWriter, r *http.Request) {
 			if d, ok := c.stats.NetDiff[name]; ok && d != nil {
 				netDiff = *d
 			} else if cs, ok := c.chains[name]; ok {
-				netDiff = cs.Difficulty
+				netDiff = rpcDiffToShareUnits(cs.Difficulty, c.stats.ScryptShift)
 			}
 			for _, sh := range c.stats.Shares {
 				if sh.T < cut {

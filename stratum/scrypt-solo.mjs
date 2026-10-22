@@ -368,6 +368,16 @@ const SCRYPT_SHIFT = BigInt(process.env.SCRYPT_DIFF_SHIFT || 16);
 const DIFF1 = (0x0000ffffn << 208n) << SCRYPT_SHIFT;
 const targetForDifficulty = (d) => DIFF1 / BigInt(Math.max(1, Math.floor(d)));
 
+/* Difficulty of a target, in the SAME units as a share's achieved difficulty.
+ *
+ * Scaled before dividing for the same reason the share path does it: BigInt
+ * division truncates, so a plain DIFF1 / target returns 0 on any chain easier
+ * than difficulty 1 -- every regtest and testnet. Zero then reads downstream
+ * as "no network difficulty known", which is a silent wrong answer rather
+ * than a loud one. */
+const diffOfTarget = (target) =>
+  target > 0n ? Number((DIFF1 * 1000000n) / target) / 1000000 : null;
+
 /**
  * THE ONE FIELD REGTEST CANNOT VALIDATE.
  *
@@ -1907,7 +1917,23 @@ function statsSnapshot(srv, now = Date.now()) {
     });
   }
 
-  const job = srv.jobs?.current ?? null;
+  /* A representative job for the stats.
+   *
+   * There is no single "current" job any more -- there is one per payout
+   * target -- and `srv.jobs.current` silently became undefined when jobs
+   * were keyed by target. That emptied networkDifficulty below, which made
+   * the collector fall back to the chain's RPC difficulty, which is quoted
+   * against a different difficulty-1 than share difficulty is. Every "how
+   * close did that share come" figure was then 2^SCRYPT_SHIFT too high.
+   *
+   * Any target answers: all of them are built from the same template, so
+   * height, staleness and both chains' targets are identical across them.
+   * Only the coinbase differs. */
+  const job = srv.jobs
+    ? srv.jobs.jobFor(srv.jobs.defaultKey)
+      ?? [...srv.jobs.targets.values()].map((t) => t.current).find(Boolean)
+      ?? null
+    : null;
 
   return {
     ok: true,
@@ -1952,8 +1978,8 @@ function statsSnapshot(srv, now = Date.now()) {
        and so the two numbers cannot disagree about which target was live
        when the share arrived. */
     networkDifficulty: {
-      [PRIMARY_CHAIN]: job ? Number(DIFF1 / job.target) : null,
-      ...(job?.aux ? { [AUX_CHAIN]: Number(DIFF1 / job.aux.target) } : {}),
+      [PRIMARY_CHAIN]: job ? diffOfTarget(job.target) : null,
+      ...(job?.aux ? { [AUX_CHAIN]: diffOfTarget(job.aux.target) } : {}),
     },
   };
 }

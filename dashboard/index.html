@@ -477,7 +477,15 @@ footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);display
   const short = (a) => a && a.length > 14 ? a.slice(0, 6) + '…' + a.slice(-4) : (a || '');
   const pct = (x, d = 2) => isFinite(x) ? x.toFixed(d) + '%' : '–';
   // Percentages stop being readable past a few hundred: 21913.4% is 219x.
-  const luckStr = (x) => !isFinite(x) || x <= 0 ? '–' : x >= 1000 ? (x / 100).toFixed(0) + 'x' : pct(x, x >= 10 ? 1 : 2);
+  /* Solo luck lives well below one percent, and a flat 2dp rounds 0.004% and
+     0.0009% to the same "0.00%" — a figure that says nothing and reads as
+     broken on the one panel whose job is to show movement. Hold roughly three
+     significant figures down there instead. */
+  const luckStr = (x) => !isFinite(x) || x <= 0 ? '–'
+    : x >= 1000 ? (x / 100).toFixed(0) + 'x'
+    : x >= 10 ? pct(x, 1)
+    : x >= 1 ? pct(x, 2)
+    : pct(x, Math.min(6, 2 + Math.ceil(-Math.log10(x))));
   /* Every worker mines BOTH chains -- that is what merge mining is -- so
      this is not filtered by chain. The count is the same under either tab,
      and showing a worker only under one would be a lie about what it does. */

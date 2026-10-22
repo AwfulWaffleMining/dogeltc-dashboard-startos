@@ -16,7 +16,7 @@ import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
  * found by this package on a real chain.
  */
 export const current = VersionInfo.of({
-  version: '0.1.0:3',
+  version: '0.1.0:4',
   releaseNotes: {
     en_US:
       'Requires each node to be sharing its RPC, which is off by default — the service now says so as a task instead of failing to start. Your worker name can be set yourself in Payouts. First release otherwise. Solo merge-mines Dogecoin and Litecoin against your own nodes — one scrypt hash tested against both targets, no pool and no fee. Both node packages must be installed and fully synced, and the service will not start until you have chosen where blocks pay.',
